@@ -21,7 +21,9 @@ Structured output: A structured JSON object containing a weekly breakdown of wor
 browser -> frontend (Streamlit) :8501 -> backend (FastAPI) :8000 -> SQLite (only the backend) -> ai-service (FastAPI + Pydantic AI) :8001 (called only by the backend)
 
 ## AI use
-Tools: Gemeni · Help received: Structuring the initial FastAPI backend layout and README template · Checks I ran: Verified `/health` endpoint locally using `curl`.
+Tools: Gemini, GitHub CLI
+Help received: SQLite persistence setup with SQLModel, separating Pydantic schemas (Create/Update), and implementing full CRUD endpoints
+Checks I ran: Tested API endpoints via Swagger UI (`/docs`) and verified local database operations.
 
 ## Open-source shortlist
 | Repository | Stars (date checked) | License | Why it fits me |
