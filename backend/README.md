@@ -21,7 +21,7 @@ Structured output: A structured JSON object containing a weekly breakdown of wor
 browser -> frontend (Streamlit) :8501 -> backend (FastAPI) :8000 -> SQLite (only the backend) -> ai-service (FastAPI + Pydantic AI) :8001 (called only by the backend)
 
 ## AI use
-Tools: ChatGPT / Claude · Help received: Structuring the initial FastAPI backend layout and README template · Checks I ran: Verified `/health` endpoint locally using `curl`.
+Tools: Gemeni · Help received: Structuring the initial FastAPI backend layout and README template · Checks I ran: Verified `/health` endpoint locally using `curl`.
 
 ## Open-source shortlist
 | Repository | Stars (date checked) | License | Why it fits me |
@@ -29,3 +29,10 @@ Tools: ChatGPT / Claude · Help received: Structuring the initial FastAPI backen
 | fastapi/fastapi | 103,177 (2026-10-17) | MIT | Core framework used for the backend API |
 | streamlit/streamlit | 35,500 (2026-10-17) | Apache-2.0 | Potential frontend interface candidate |
 | pydantic/pydantic-ai | 4,200 (2026-10-17) | MIT | Framework for structured AI outputs |
+
+## How to run
+1. Clone the repository and navigate to the project root.
+2. Navigate to the backend directory and start the FastAPI development server:
+   ```bash
+   cd backend
+   uv run fastapi dev
