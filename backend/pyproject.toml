@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fitness Planner FastAPI backend"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -14,5 +14,16 @@ entrypoint = "app.main:app"
 
 [dependency-groups]
 dev = [
+    "httpx2",
     "pytest>=9.1.1",
+    "ruff",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error"]
+
+[tool.ruff.lint]
+extend-select = ["I", "FAST"]
