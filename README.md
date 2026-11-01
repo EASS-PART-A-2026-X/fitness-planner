@@ -11,7 +11,10 @@ An AI-powered workout routine and fitness goal planner that generates personaliz
 3. As a user, I can update or delete my workout routine so that I can adapt it as I progress.
 
 ## Data sketch
-`WorkoutPlan`: title (text, 1–200 chars), goal (text, 1–100 chars), duration_weeks (integer, 1–52, default 4), exercises (text, at most 5000 chars, one per line), created_at (timestamp).
+`WorkoutPlan`: `id` (integer primary key), `user_id` (positive integer),
+`title` (text, 1–200 chars), `goal` (text, 1–100 chars),
+`frequency_per_week` (integer, 1–7), `experience_level` (text, 1–50 chars),
+and `exercises` (text, at most 5000 chars, one per line).
 
 ## The AI service
 Input: User profile, goals, available equipment, and weekly time commitment.  
@@ -23,14 +26,16 @@ browser -> frontend (Streamlit) :8501 -> backend (FastAPI) :8000 -> SQLite (only
 ## AI use
 Tools: Gemini, GitHub CLI
 Help received: SQLite persistence setup with SQLModel, separating Pydantic schemas (Create/Update), and implementing full CRUD endpoints
-Checks I ran: Tested API endpoints via Swagger UI (`/docs`) and verified local database operations.
+Checks I ran: `uv run pytest`, `uv run ruff check .`,
+`uv run ruff format --check .`, and the `/health` endpoint locally and in
+Docker.
 
 ## Open-source shortlist
 | Repository | Stars (date checked) | License | Why it fits me |
 |---|---|---|---|
 | fastapi/fastapi | 103,177 (2026-10-17) | MIT | Core framework used for the backend API |
 | streamlit/streamlit | 35,500 (2026-10-17) | Apache-2.0 | Potential frontend interface candidate |
-| pydantic/pydantic-ai | 4,200 (2026-10-17) | MIT | Framework for structured AI outputs |
+| tldr-pages/tldr | 64.1k (2026-10-17) | MIT | Added a Hebrew translation |
 
 ## How to run
 1. Clone the repository and navigate to the project root.
@@ -38,3 +43,13 @@ Checks I ran: Tested API endpoints via Swagger UI (`/docs`) and verified local d
    ```bash
    cd backend
    uv run fastapi dev
+   ```
+
+### Docker
+
+From the `backend` directory, build and run the image:
+
+```bash
+docker build -t fitness-planner-backend .
+docker run --rm -p 127.0.0.1:8000:8000 fitness-planner-backend
+```
