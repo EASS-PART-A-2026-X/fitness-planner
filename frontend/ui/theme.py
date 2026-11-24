@@ -96,6 +96,13 @@ p, li, label, [data-testid="stCaptionContainer"] { color: var(--muted); }
   border-color: rgba(16, 185, 129, .25) !important;
 }
 [class*="st-key-fp-card-"] h3 { font-family: var(--display); font-weight: 600; }
+/* Streamlit pulls text blocks up with a -1rem bottom margin (to hide a
+   paragraph's margin). Our HTML blocks have no such margin, so inside cards and
+   dialogs that made them overflow their row and sit low; undo it there. */
+[class*="st-key-fp-card-"] [data-testid="stMarkdownContainer"]:has(> [class^="fp-"]),
+[data-testid="stDialog"] [data-testid="stMarkdownContainer"]:has(> [class^="fp-"]) {
+  margin-bottom: 0;
+}
 
 /* ---------- Buttons ---------- */
 .stButton > button, .stFormSubmitButton > button {
@@ -238,6 +245,7 @@ p, li, label, [data-testid="stCaptionContainer"] { color: var(--muted); }
   color: #FDA4AF; background: rgba(225, 29, 72, .12); border-color: rgba(244, 63, 94, .45);
   box-shadow: 0 8px 20px -8px rgba(225, 29, 72, .5);
 }
+[data-testid="stDialog"] { align-items: center; padding-top: 0; }
 [data-testid="stDialog"] [role="dialog"] {
   background: linear-gradient(180deg, #16223A, #0F1A2E);
   border: 1px solid var(--line-strong); border-radius: 22px;
