@@ -3,8 +3,11 @@
 import streamlit as st
 
 import fitness_planner_api as api
-from ui.catalog import EQUIPMENT_LABELS
+from ui import analytics
+from ui.catalog import DEFAULT_MINUTES, EQUIPMENT_LABELS, MINUTE_CHOICES, TYPES_BY_ID
 from ui.components import (
+    art_svg,
+    back_link,
     card,
     chip,
     coach_note,
@@ -19,7 +22,8 @@ from ui.components import (
 from ui.state import go, notify
 
 
-def plan_heading(workout: api.WorkoutPlan, eyebrow: str) -> None:
+def _identity(workout: api.WorkoutPlan, eyebrow: str) -> str:
+    """Picture, eyebrow, title and tags of a plan, as one HTML block."""
     chips = "".join(
         chip(text)
         for text in (
@@ -28,13 +32,22 @@ def plan_heading(workout: api.WorkoutPlan, eyebrow: str) -> None:
             workout["experience_level"],
         )
     )
-    html_block(
+    kind = TYPES_BY_ID.get(workout.get("emoji", ""))
+    picture = (
+        f'<div class="fp-type-art tone-{kind.tone}">{art_svg(kind.art)}</div>'
+        if kind
+        else workout_icon(workout.get("emoji", ""), workout["id"])
+    )
+    return (
+        f'<div class="fp-plan-id">{picture}<div>'
         f'<div class="fp-eyebrow">{safe_html(eyebrow)}</div>'
-        '<div class="fp-workout" style="margin:.5rem 0 1.5rem">'
-        f"{workout_icon(workout.get('emoji', ''), workout['id'])}"
-        f'<div><div class="fp-page-title" style="margin:0">{safe_html(workout["title"])}</div>'
+        f'<div class="fp-page-title">{safe_html(workout["title"])}</div>'
         f'<div class="fp-meta">{chips}</div></div></div>'
     )
+
+
+def plan_heading(workout: api.WorkoutPlan, eyebrow: str) -> None:
+    html_block(f'<div class="fp-plan-heading">{_identity(workout, eyebrow)}</div>')
 
 
 def ai_refresh(token: str, workout_id: int) -> None:
@@ -49,12 +62,12 @@ def ai_refresh(token: str, workout_id: int) -> None:
             format_func=EQUIPMENT_LABELS.get,
             key=f"plan-{workout_id}-equipment",
         )
-        minutes = st.slider(
+        minutes = st.segmented_control(
             "Minutes per workout",
-            10,
-            120,
-            45,
-            step=5,
+            options=MINUTE_CHOICES,
+            default=DEFAULT_MINUTES,
+            format_func=lambda n: f"{n} min",
+            required=True,
             key=f"plan-{workout_id}-minutes",
         )
         notes = st.text_input(
@@ -79,6 +92,12 @@ def ai_refresh(token: str, workout_id: int) -> None:
                 "coach_notes", ""
             )
             backup = updated.get("plan_source") == "offline"
+            analytics.capture(
+                "ai_exercises_regenerated",
+                workout_type=updated.get("emoji", ""),
+                plan_source="offline" if backup else "ai",
+                exercise_count=len(updated["exercises"]),
+            )
             notify(
                 f"Updated {plain(updated['title'])} with new exercises"
                 + (
@@ -90,7 +109,7 @@ def ai_refresh(token: str, workout_id: int) -> None:
 
 
 def render(token: str, workout_id: int) -> None:
-    if st.button("← All plans", key="plan-back"):
+    if back_link("← All plans", "plan-back"):
         go("plans")
     try:
         workout = api.read_workout(token, workout_id)
@@ -103,30 +122,27 @@ def render(token: str, workout_id: int) -> None:
         "is_active", bool(saved.get("checked_exercises") or saved.get("completed_sets"))
     )
 
-    plan_heading(workout, "Workout plan")
-    main_col, side_col = st.columns([1.7, 1], gap="large")
-    with main_col:
-        section("Planned exercises")
-        with card():
-            coach_note(st.session_state.get(f"plan-{workout_id}-coach-notes", ""))
-            exercise_list(workout["exercises"])
-        ai_refresh(token, workout_id)
-
-    with side_col:
-        section("This week")
-        with card():
+    # One compact header panel: who the plan is on the left, this week's
+    # progress and the actions on the right, so the exercises start right below.
+    with st.container(key="fp-plan-hero"):
+        id_col, action_col = st.columns(
+            [1.7, 1], gap="large", vertical_alignment="center"
+        )
+        id_col.markdown(_identity(workout, "Workout plan"), unsafe_allow_html=True)
+        with action_col:
             html_block(
-                segments(
+                '<div class="fp-eyebrow">This week</div>'
+                + segments(
                     progress["completed_this_week"], progress["frequency_per_week"]
                 )
-            )
-            if active:
-                html_block(
-                    '<div class="fp-meta" style="margin-top:.8rem">'
-                    f"{chip('Workout started · resume where you left off', live=True)}</div>"
+                + (
+                    f'<div class="fp-meta">{chip("Started · resume where you left off", live=True)}</div>'
+                    if active
+                    else ""
                 )
-            st.write("")
-            if st.button(
+            )
+            start_col, edit_col = st.columns([1.6, 1])
+            if start_col.button(
                 "Resume workout ▶" if active else "Start workout ▶",
                 key="start-workout",
                 type="primary",
@@ -137,6 +153,18 @@ def render(token: str, workout_id: int) -> None:
                 except api.BackendError as exc:
                     st.error(f"Could not start your workout. {exc}")
                 else:
+                    analytics.capture(
+                        "workout_started",
+                        workout_type=workout.get("emoji", ""),
+                        resumed=bool(active),
+                        exercise_count=len(workout["exercises"]),
+                    )
                     go("detail", workout_id=workout_id)
-            if st.button("Edit plan", key="edit-workout", width="stretch"):
+            if edit_col.button("Edit plan", key="edit-workout", width="stretch"):
                 go("edit", workout_id=workout_id)
+
+    section("Planned exercises")
+    with card():
+        coach_note(st.session_state.get(f"plan-{workout_id}-coach-notes", ""))
+        exercise_list(workout["exercises"])
+    ai_refresh(token, workout_id)

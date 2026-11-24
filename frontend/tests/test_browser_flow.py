@@ -95,7 +95,9 @@ def stack(tmp_path_factory) -> Iterator[dict]:
                 + ["--server.address", "127.0.0.1", "--server.headless", "true"]
                 + ["--server.port", str(ports["frontend"])],
                 cwd=FRONTEND,
-                env=os.environ | {"BACKEND_URL": urls["backend"]},
+                # An empty key keeps analytics off (the real .env key is ignored).
+                env=os.environ
+                | {"BACKEND_URL": urls["backend"], "POSTHOG_API_KEY": ""},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
             )

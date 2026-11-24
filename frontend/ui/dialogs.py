@@ -8,6 +8,7 @@ or dismisses it.
 import streamlit as st
 
 import fitness_planner_api as api
+from ui import analytics
 from ui.components import html_block, plain, safe_html, workout_icon
 from ui.state import notify, set_page_state
 
@@ -57,6 +58,11 @@ def _confirm_delete(token: str, workout: api.WorkoutPlan, key_prefix: str) -> No
             except api.BackendError as exc:
                 st.error(str(exc))
                 return
+            analytics.capture(
+                "plan_deleted",
+                workout_type=workout.get("emoji", ""),
+                source=key_prefix.split("-")[0],  # "plans" list or "edit" page
+            )
             _close()
             _forget_plan(workout_id)
             set_page_state("plans")

@@ -13,7 +13,7 @@ from ui.components import card, html_block
 from ui.exercises import structured_exercise
 
 MAX_EXERCISES = 100
-REST_CHOICES = (0, 15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300)
+REST_CHOICES = (0, 30, 45, 60, 90, 120, 180)
 ROW_FIELDS = ("name", "sets", "reps", "vary", "replist", "rest", "notes")
 
 
@@ -133,12 +133,14 @@ def plan_details(
             "Sessions per week",
             options=range(1, 8),
             format_func=lambda n: f"{n}×",
+            required=True,
             key=f"{prefix}-frequency",
         )
         experience = level_col.segmented_control(
             "Experience level",
             options=levels,
             format_func=str.capitalize,
+            required=True,
             key=f"{prefix}-experience",
         )
     return {
@@ -153,12 +155,13 @@ def plan_details(
 
 
 def _rest_label(seconds: int) -> str:
+    """Short pill labels: None, 30s, 1m, 1m30, 2m…"""
     if seconds == 0:
-        return "No rest"
+        return "None"
     minutes, rest = divmod(seconds, 60)
     if minutes and rest:
-        return f"{minutes} min {rest} s"
-    return f"{minutes} min" if minutes else f"{seconds} s"
+        return f"{minutes}m{rest:02d}"
+    return f"{minutes}m" if minutes else f"{seconds}s"
 
 
 def _exercise_row(
@@ -189,7 +192,7 @@ def _exercise_row(
                 width="stretch",
             )
 
-        sets_col, reps_col, rest_col = st.columns([1, 1.3, 2.2])
+        sets_col, reps_col, rest_col = st.columns([1, 1.2, 3.2])
         sets = sets_col.number_input(
             "Sets", min_value=1, max_value=100, step=1, key=f"{prefix}-sets-{row}"
         )
@@ -214,10 +217,13 @@ def _exercise_row(
             reps = ", ".join([str(int(same))] * int(sets))
         rest_key = f"{prefix}-rest-{row}"
         choices = sorted({*REST_CHOICES, int(st.session_state.get(rest_key, 60))})
-        rest = rest_col.select_slider(
+        # Tap-to-pick instead of a slider: Streamlit's slider draws its handle
+        # mirrored in right-to-left browser languages (e.g. Hebrew).
+        rest = rest_col.segmented_control(
             "Rest between sets",
             options=choices,
             format_func=_rest_label,
+            required=True,
             key=rest_key,
         )
         st.toggle(

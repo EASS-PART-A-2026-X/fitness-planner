@@ -5,7 +5,8 @@ import time
 import streamlit as st
 
 import fitness_planner_api as api
-from ui.components import card, html_block, plain, ring, safe_html, section
+from ui import analytics
+from ui.components import back_link, card, html_block, plain, ring, safe_html, section
 from ui.exercises import exercise_name, exercise_set_count, planned_reps
 from ui.pages.plan import plan_heading
 from ui.state import go, notify, set_page_state
@@ -79,7 +80,7 @@ def set_pills(
 
 
 def render(token: str, workout_id: int) -> None:
-    if st.button("← Back to plan", key="detail-back"):
+    if back_link("← Back to plan", "detail-back"):
         go("plan", workout_id=workout_id)
     try:
         with st.spinner("Loading workout..."):
@@ -193,6 +194,13 @@ def render(token: str, workout_id: int) -> None:
                 except api.BackendError as exc:
                     st.error(str(exc))
                 else:
+                    analytics.capture(
+                        "workout_completed",
+                        workout_type=workout.get("emoji", ""),
+                        sets_done=len(completed_sets),
+                        total_sets=total_sets,
+                        exercise_count=len(exercises),
+                    )
                     _clear_timer(prefix)
                     st.session_state.pop(selected_key, None)
                     st.session_state["celebrate"] = workout["title"]
@@ -221,6 +229,7 @@ def _cancel(token: str, workout_id: int, prefix: str) -> None:
             except api.BackendError as exc:
                 st.error(f"Could not cancel your workout. {exc}")
             else:
+                analytics.capture("workout_cancelled")
                 st.session_state.pop(confirm_key, None)
                 st.session_state.pop(f"{prefix}-exercise-index", None)
                 _clear_timer(prefix)

@@ -1,6 +1,7 @@
 import streamlit as st
 
 import fitness_planner_api as api
+from ui import analytics
 from ui.components import brand, safe_html
 from ui.session import clear_login
 from ui.state import go
@@ -44,6 +45,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
         if logout_col.button("Log out", key="logout", width="stretch"):
+            analytics.capture("logged_out")
             try:
                 api.logout(st.session_state["access_token"])
             except api.BackendError as exc:

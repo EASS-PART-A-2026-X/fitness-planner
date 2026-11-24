@@ -261,6 +261,8 @@ CUSTOM_ART = _ART["custom"]
 TONES = {item.id: item.tone for item in WORKOUT_TYPES}
 
 LEVELS = ("beginner", "intermediate", "advanced")
+MINUTE_CHOICES = (15, 20, 30, 45, 60, 75, 90, 120)
+DEFAULT_MINUTES = 45
 EQUIPMENT_LABELS = {
     "bodyweight": "Bodyweight",
     "dumbbells": "Dumbbells",

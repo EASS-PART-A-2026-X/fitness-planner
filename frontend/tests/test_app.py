@@ -11,10 +11,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-import respx
 from streamlit.testing.v1 import AppTest
-
-import fitness_planner_api as api
 
 FRONTEND = Path(__file__).parents[1]
 APP = FRONTEND / "streamlit_app.py"
@@ -41,18 +38,6 @@ HISTORY = [
     {"week_start": "2026-11-16", "completed_sessions": 2, "weekly_target": 3},
     {"week_start": "2026-11-23", "completed_sessions": 1, "weekly_target": 3},
 ]
-
-
-@pytest.fixture
-def backend():
-    with respx.mock(base_url=api.BACKEND_URL, assert_all_called=False) as mock:
-        mock.get("/auth/me").mock(
-            return_value=httpx.Response(200, json={"id": 4, "username": "tester"})
-        )
-        mock.get("/workouts/recent-completions").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        yield mock
 
 
 def start_app(
@@ -479,7 +464,7 @@ def test_create_plan_sends_structured_exercises_and_the_chosen_icon(backend):
     at.text_input(key="create-0-name-0").input("Deadlifts")
     at.number_input(key="create-0-sets-0").set_value(3)
     at.number_input(key="create-0-reps-0").set_value(8)
-    at.select_slider(key="create-0-rest-0").set_value(90)
+    at.session_state["create-0-rest-0"] = 90  # the rest pill picker
     at.button(key="create-0-submit").click().run()
 
     assert json.loads(post.calls[0].request.content) == {

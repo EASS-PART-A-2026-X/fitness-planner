@@ -125,6 +125,12 @@ def brand(section: str = "dashboard", previous: str | None = None) -> None:
     )
 
 
+def back_link(label: str, key: str) -> bool:
+    """A small, quiet 'back' button that does not push the page down."""
+    with st.container(key=f"fp-back-{key}"):
+        return st.button(label, key=key)
+
+
 def page_header(eyebrow: str, title: str, subtitle: str = "") -> None:
     html_block(
         f'<div class="fp-eyebrow">{safe_html(eyebrow)}</div>'

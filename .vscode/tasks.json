@@ -1,0 +1,99 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Fitness Planner: AI service",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "fastapi",
+        "dev",
+        "--port",
+        "8001"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/ai-service"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "endsPattern": "Application startup complete"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "fitness-planner"
+      }
+    },
+    {
+      "label": "Fitness Planner: backend",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "fastapi",
+        "dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "endsPattern": "Application startup complete"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "fitness-planner"
+      }
+    },
+    {
+      "label": "Fitness Planner: frontend",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "streamlit",
+        "run",
+        "streamlit_app.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "endsPattern": "Local URL: http://localhost:8501"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "fitness-planner"
+      }
+    },
+    {
+      "label": "Fitness Planner: run all",
+      "dependsOn": [
+        "Fitness Planner: AI service",
+        "Fitness Planner: backend",
+        "Fitness Planner: frontend"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    }
+  ]
+}

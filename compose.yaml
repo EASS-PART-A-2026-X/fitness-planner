@@ -47,6 +47,9 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:-8501}:8501"
     environment:
       BACKEND_URL: http://backend:8000
+      # Product analytics; off unless a key is set in .env.
+      POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://us.i.posthog.com}
     depends_on:
       backend:
         condition: service_healthy

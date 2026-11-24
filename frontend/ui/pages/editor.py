@@ -3,16 +3,20 @@
 import streamlit as st
 
 import fitness_planner_api as api
+from ui import analytics
 from ui.catalog import (
     BACKUP_NOTICE,
     CUSTOM_ART,
+    DEFAULT_MINUTES,
     EQUIPMENT_LABELS,
+    MINUTE_CHOICES,
     TYPES_BY_ID,
     WORKOUT_TYPES,
     WorkoutType,
 )
 from ui.components import (
     art_svg,
+    back_link,
     card,
     coach_note,
     html_block,
@@ -57,6 +61,7 @@ def guess_type(name: str) -> str:
 def _choose(prefix: str, type_id: str) -> None:
     st.session_state["create-type"] = type_id
     st.session_state.pop(f"{prefix}-title", None)
+    analytics.capture("workout_type_selected", workout_type=type_id)
 
 
 def type_grid(prefix: str) -> None:
@@ -118,17 +123,22 @@ def ai_fill(token: str, prefix: str, details: dict) -> None:
             "Uses your name, goal, sessions and level from above. You can still "
             "edit, remove or add exercises afterwards."
         )
-        minutes_col, equipment_col = st.columns([1, 1.4])
-        minutes = minutes_col.slider(
-            "Minutes per workout", 10, 120, 45, step=5, key=f"{prefix}-minutes"
+        minutes = st.segmented_control(
+            "Minutes per workout",
+            options=MINUTE_CHOICES,
+            default=DEFAULT_MINUTES,
+            format_func=lambda n: f"{n} min",
+            required=True,
+            key=f"{prefix}-minutes",
         )
+        equipment_col, notes_col = st.columns(2)
         equipment = equipment_col.multiselect(
             "Equipment (bodyweight if empty)",
             api.EQUIPMENT,
             format_func=EQUIPMENT_LABELS.get,
             key=f"{prefix}-equipment",
         )
-        notes = st.text_input(
+        notes = notes_col.text_input(
             "Anything the coach should know? (optional)",
             max_chars=200,
             placeholder="e.g. sore left knee, short on time",
@@ -157,12 +167,24 @@ def ai_fill(token: str, prefix: str, details: dict) -> None:
         request["equipment"] = equipment
     if notes.strip():
         request["notes"] = notes.strip()
+    workout_type = st.session_state.get("create-type")
     try:
         with st.spinner("Your coach is drafting exercises..."):
             draft = api.draft_plan(token, request)
     except api.BackendError as exc:
         st.error(str(exc))
+        analytics.capture(
+            "ai_draft_failed", workout_type=workout_type, error=type(exc).__name__
+        )
         return
+    analytics.capture(
+        "ai_exercises_drafted",
+        workout_type=workout_type,
+        plan_source=draft.get("plan_source", "ai"),
+        exercise_count=len(draft["exercises"]),
+        minutes_per_session=minutes,
+        equipment_count=len(equipment),
+    )
     load_exercises(prefix, draft["exercises"])
     st.session_state[f"{prefix}-coach-notes"] = draft.get("coach_notes", "")
     st.session_state[f"{prefix}-plan-source"] = draft.get("plan_source", "ai")
@@ -193,7 +215,7 @@ def render_create(token: str) -> None:
     custom_name = st.session_state.get("create-custom-name", "").strip()
     kind = TYPES_BY_ID.get(type_id)
     name = kind.label if kind else custom_name or "workout"
-    if st.button("← Choose another workout", key="create-change"):
+    if back_link("← Choose another workout", "create-change"):
         st.session_state.pop("create-type", None)
         st.rerun()
     chosen_heading(kind, name)
@@ -224,6 +246,15 @@ def render_create(token: str) -> None:
         except api.BackendError as exc:
             st.error(str(exc))
             return
+        analytics.capture(
+            "plan_created",
+            workout_type=workout["emoji"],
+            custom_name=kind is None,
+            used_ai=f"{prefix}-plan-source" in st.session_state,
+            exercise_count=len(exercises),
+            sessions_per_week=workout["frequency_per_week"],
+            experience_level=workout["experience_level"],
+        )
         clear_form(prefix)
         for key in ("create-type", "create-custom-name"):
             st.session_state.pop(key, None)
@@ -237,7 +268,7 @@ def render_create(token: str) -> None:
 
 def render_edit(token: str, workout_id: int) -> None:
     prefix = f"edit-{workout_id}"
-    if st.button("← Back to plan", key="edit-back"):
+    if back_link("← Back to plan", "edit-back"):
         clear_form(prefix)
         go("plan", workout_id=workout_id)
     try:
@@ -266,6 +297,11 @@ def render_edit(token: str, workout_id: int) -> None:
             except api.BackendError as exc:
                 st.error(str(exc))
             else:
+                analytics.capture(
+                    "plan_updated",
+                    workout_type=workout.get("emoji", ""),
+                    exercise_count=len(exercises),
+                )
                 clear_form(prefix)
                 st.session_state.pop(f"session-{workout_id}-exercise-index", None)
                 set_page_state("plan", workout_id=workout_id)

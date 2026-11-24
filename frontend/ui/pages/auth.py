@@ -1,6 +1,7 @@
 import streamlit as st
 
 import fitness_planner_api as api
+from ui import analytics
 from ui.components import brand, card, html_block, icon
 from ui.session import save_login
 
@@ -65,3 +66,6 @@ def _submit(action, username: str, password: str, password_key: str) -> None:
     else:
         st.session_state.pop(password_key, None)
         save_login(session)
+        analytics.capture(
+            "signed_up" if password_key == "register-password" else "logged_in"
+        )

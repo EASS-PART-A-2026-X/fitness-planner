@@ -3,10 +3,12 @@
 All HTTP lives in fitness_planner_api.py; pages live in ui/pages/.
 """
 
+from pathlib import Path
+
 import streamlit as st
 
 import fitness_planner_api as api
-from ui import dialogs, session
+from ui import analytics, dialogs, session
 from ui.components import reset_cards
 from ui.mascot import celebration_html
 from ui.pages import auth, dashboard, editor, header, library, plan, workout
@@ -15,7 +17,7 @@ from ui.theme import inject_theme
 
 st.set_page_config(
     page_title="Fitness Planner",
-    page_icon="💪",
+    page_icon=str(Path(__file__).parent / "assets" / "rep-icon.svg"),  # Rep's face
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -26,7 +28,8 @@ session.init_cookies()
 restored = session.restore_login()
 if "access_token" in st.session_state and not restored:
     try:
-        api.current_user(st.session_state["access_token"])
+        user = api.current_user(st.session_state["access_token"])
+        st.session_state["user_id"] = user.get("id")
     except api.SessionExpired:
         session.clear_login()
         st.session_state["notice"] = "Your session expired. Please sign in again."
@@ -53,6 +56,7 @@ celebrate = st.session_state.pop("celebrate", None)
 
 page = st.session_state["page"]
 workout_id = st.session_state.get("selected_workout_id")
+analytics.track_page(page)
 if page == "create":
     editor.render_create(token)
 elif page == "plan" and workout_id:

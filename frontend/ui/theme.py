@@ -149,6 +149,39 @@ p, li, label, [data-testid="stCaptionContainer"] { color: var(--muted); }
   background: linear-gradient(135deg, #FB7185, #F43F5E); color: #fff;
 }
 
+/* ---------- Back links + plan header ---------- */
+[class*="st-key-fp-back-"] { margin: -.75rem 0 -.35rem; }
+[class*="st-key-fp-back-"] .stButton > button {
+  min-height: 2rem; padding: 0 .75rem 0 .5rem; font-size: .84rem; font-weight: 500;
+  color: var(--muted); background: transparent; border-color: transparent; box-shadow: none;
+}
+[class*="st-key-fp-back-"] .stButton > button:hover {
+  color: var(--ink); background: rgba(255, 255, 255, .06); border-color: transparent;
+  box-shadow: none; transform: none;
+}
+.st-key-fp-plan-hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  padding: 1.35rem 1.6rem; margin-bottom: .75rem; border-radius: 24px;
+  background:
+    radial-gradient(26rem 14rem at 95% 0%, rgba(16, 185, 129, .3), transparent 65%),
+    radial-gradient(22rem 12rem at 0% 120%, rgba(59, 130, 246, .22), transparent 65%),
+    linear-gradient(135deg, #0E1729 0%, #13203A 100%);
+  border: 1px solid rgba(52, 211, 153, .18);
+  box-shadow: var(--highlight), var(--shadow-lg);
+}
+.st-key-fp-plan-hero [data-testid="stMarkdownContainer"]:has(> [class^="fp-"]) { margin-bottom: 0; }
+.fp-plan-id { display: flex; align-items: center; gap: 1.25rem; min-width: 0; }
+.fp-plan-id > div:last-child { min-width: 0; }
+.fp-plan-id .fp-type-art { flex: 0 0 5.5rem; width: 5.5rem; height: 5.5rem; margin: 0; }
+.fp-plan-id .fp-type-art svg { width: 4rem; height: 4rem; }
+.fp-plan-id .fp-icon { flex-basis: 4rem; width: 4rem; height: 4rem; border-radius: 18px; }
+.fp-plan-id .fp-page-title {
+  margin: .3rem 0 .15rem; font-size: clamp(1.8rem, 3.4vw, 2.5rem); overflow-wrap: anywhere;
+}
+.st-key-fp-plan-hero .fp-segments { margin-top: .55rem; }
+.st-key-fp-plan-hero .fp-meta { margin: .5rem 0 .2rem; }
+.fp-plan-heading { margin: .25rem 0 1.1rem; }
+
 /* ---------- Create: workout picture grid ---------- */
 [class*="st-key-fp-type-"] {
   position: relative; gap: 0; margin-bottom: .35rem;
@@ -256,7 +289,7 @@ p, li, label, [data-testid="stCaptionContainer"] { color: var(--muted); }
 /* ---------- Top bar: floating dark glass pill ---------- */
 .st-key-fp-topbar {
   position: sticky; top: calc(env(safe-area-inset-top, 0px) + .75rem); z-index: 50;
-  margin: 0 0 2.5rem; padding: .45rem .55rem .45rem 1rem;
+  margin: 0 0 1.75rem; padding: .45rem .55rem .45rem 1rem;
   background: rgba(13, 22, 40, .7);
   backdrop-filter: saturate(160%) blur(18px);
   -webkit-backdrop-filter: saturate(160%) blur(18px);

@@ -10,7 +10,7 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-frontend-FF4B4B?logo=streamlit&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
 ![Pydantic AI](https://img.shields.io/badge/Pydantic%20AI-coach-E92063)
-![Tests](https://img.shields.io/badge/tests-214%20passing-10B981)
+![Tests](https://img.shields.io/badge/tests-221%20passing-10B981)
 
 </div>
 
@@ -133,6 +133,8 @@ cd frontend   && uv run streamlit run streamlit_app.py   # :8501
 | `AI_MODEL` | ai-service | `test` (offline rule-based coach) |
 | `AI_FALLBACK` | ai-service | `baseline` (use the offline coach when the real model fails; `off` to disable) |
 | `AI_COST_LIMIT_USD` | ai-service | unset (no cost cap) |
+| `POSTHOG_API_KEY` | frontend | unset (analytics off) |
+| `POSTHOG_HOST` | frontend | `https://us.i.posthog.com` |
 
 There is no seed data: every plan belongs to an account, so a fresh database
 starts empty and you create an account on the sign-in screen.
@@ -142,7 +144,7 @@ starts empty and you create an account on the sign-in screen.
 ```bash
 cd ai-service && uv run pytest     # 50 passed, offline, no API key
 cd backend    && uv run pytest     # 101 passed, AI calls faked with httpx.MockTransport
-cd frontend   && uv run pytest     # 61 passed (AppTest + respx + live-backend integration)
+cd frontend   && uv run pytest     # 68 passed (AppTest + respx + live-backend integration)
 ```
 
 Each folder also passes `uv run ruff check .` and `uv run ruff format --check .`.
@@ -289,6 +291,37 @@ high-impact moves when the user mentions joint pain. Score: `ReasonableSize`
 |---|---|---|---|---|---|---|
 | 2026-11-24 | `test` (offline coach) | repeat=1 | 10 | 50 / 50 (100%) | 0.90 | 1 |
 
+## Product analytics (PostHog)
+
+Analytics are **off by default**. To turn them on, put your PostHog project key
+in `.env` (and `POSTHOG_HOST=https://eu.i.posthog.com` for an EU project), then
+restart the frontend:
+
+```bash
+POSTHOG_API_KEY=phc_your_project_key
+```
+
+`frontend/ui/analytics.py` sends events from the Streamlit server with the
+PostHog Python SDK, in the background, so a slow or unreachable PostHog never
+slows down or breaks a page. People are identified as `user-<account id>`;
+usernames, passwords, plan titles, goals and notes are **never** sent, only
+counts, workout types and which page or button was used.
+
+| Event | When | Properties |
+|---|---|---|
+| `$pageview` | the visible page changes | `page` |
+| `signed_up`, `logged_in`, `logged_out` | account actions | none |
+| `workout_type_selected` | a picture card (or a custom name) is picked | `workout_type` |
+| `ai_exercises_drafted` / `ai_draft_failed` | ✦ Generate exercises | `workout_type`, `plan_source`, `exercise_count`, `minutes_per_session`, `equipment_count` / `error` |
+| `plan_created` | Create plan | `workout_type`, `custom_name`, `used_ai`, `exercise_count`, `sessions_per_week`, `experience_level` |
+| `plan_updated`, `plan_deleted` | edit saved / delete confirmed | `workout_type`, `exercise_count` / `source` |
+| `ai_exercises_regenerated` | AI refresh on a plan | `workout_type`, `plan_source`, `exercise_count` |
+| `workout_started`, `workout_completed`, `workout_cancelled` | live sessions | `workout_type`, `resumed`, `sets_done`, `total_sets`, `exercise_count` |
+
+Useful first insights: a funnel `workout_type_selected → plan_created →
+workout_started → workout_completed`, and the share of `plan_created` with
+`used_ai = true`.
+
 ## Data sketch
 `WorkoutPlan`: `id`, `user_id` (owner), `title` (1–200 chars), `goal`
 (1–100), `frequency_per_week` (1–7), `experience_level` (1–50), an icon id, and
@@ -320,6 +353,7 @@ following:
   Coach page with the two-step picture-grid Create flow and the backend
   `/workouts/draft` endpoint, rebuilt the exercise editor, added delete
   dialogs, the finish-workout celebration and the mascot logo (`docs/rep.svg`);
+- added optional PostHog product analytics (`frontend/ui/analytics.py`);
 - updated the stale tests.
 
 Checks I ran: `uv run pytest` and both ruff commands in all three folders,

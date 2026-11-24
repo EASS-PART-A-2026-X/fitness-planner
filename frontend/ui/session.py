@@ -29,6 +29,8 @@ def clear_login() -> None:
         if key in {
             "access_token",
             "username",
+            "user_id",
+            "fp-analytics-page",
             "page",
             "active_section",
             "selected_workout_id",
@@ -45,6 +47,7 @@ def clear_login() -> None:
 def save_login(session: api.AuthSession) -> None:
     st.session_state["access_token"] = session["access_token"]
     st.session_state["username"] = session["user"]["username"]
+    st.session_state["user_id"] = session["user"].get("id")
     st.session_state["page"] = "home"
     st.session_state["active_section"] = "dashboard"
     st.session_state["pending-cookie"] = {
@@ -89,6 +92,7 @@ def restore_login() -> bool:
     else:
         st.session_state["access_token"] = token
         st.session_state["username"] = user["username"]
+        st.session_state["user_id"] = user.get("id")
         st.session_state["page"] = "home"
         st.session_state["active_section"] = "dashboard"
         return True
