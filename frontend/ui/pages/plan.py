@@ -3,6 +3,7 @@
 import streamlit as st
 
 import fitness_planner_api as api
+from ui.catalog import EQUIPMENT_LABELS
 from ui.components import (
     card,
     chip,
@@ -15,7 +16,6 @@ from ui.components import (
     segments,
     workout_icon,
 )
-from ui.pages.coach import EQUIPMENT_LABELS
 from ui.state import go, notify
 
 

@@ -5,6 +5,9 @@ one, so the entrance animation plays again: Rep slides in from the side you
 navigated from, does that page's move, and a short speech bubble pops up.
 """
 
+import html
+import math
+
 POSES = {
     "wave": "Hey there!",
     "think": "Hmm, let me plan…",
@@ -14,12 +17,12 @@ POSES = {
 }
 SECTION_POSES = {
     "dashboard": "wave",
-    "coach": "think",
     "plans": "lift",
+    "create": "think",
     "activities": "run",
     "analytics": "celebrate",
 }
-NAV_ORDER = ("dashboard", "coach", "plans", "activities", "analytics")
+NAV_ORDER = ("dashboard", "plans", "create", "activities", "analytics")
 
 INK = "#0F172A"
 EMERALD = "#10B981"
@@ -139,7 +142,7 @@ def mascot_svg(pose: str) -> str:
     legs = _legs("m-run" if pose == "run" else "")
     return (
         f'<svg class="m-svg" viewBox="0 0 64 64" role="img" aria-label="Rep the mascot, {pose}">'
-        '<ellipse class="m-shadow" cx="32" cy="59" rx="13" ry="2.4" fill="rgba(15,23,42,.12)"/>'
+        '<ellipse class="m-shadow" cx="32" cy="59" rx="13" ry="2.4" fill="rgba(0,0,0,.35)"/>'
         f'<g class="m-bob">{behind}{legs}'
         f'<rect x="16" y="18" width="32" height="32" rx="16" fill="{EMERALD}"/>'
         '<ellipse cx="32" cy="41" rx="9" ry="6.5" fill="#6EE7B7" opacity=".55"/>'
@@ -165,6 +168,105 @@ def mascot_html(section: str, previous: str | None = None) -> str:
         f'<span class="fp-bubble">{POSES[pose]}</span></span>'
     )
 
+
+def celebration_html(title: str) -> str:
+    """Full-screen 'workout complete' moment: a giant Rep, a ring burst and confetti.
+
+    Pure CSS, so it plays once per page load and then hides itself.
+    """
+    colors = (EMERALD, CORAL, BLUE, "#FBBF24", "#5EEAD4", "#F472B6")
+    pieces = []
+    count = 30
+    for index in range(count):
+        angle = 2 * math.pi * index / count + (index % 3) * 0.17
+        distance = 190 + (index * 47) % 170
+        x = round(math.cos(angle) * distance)
+        y = round(math.sin(angle) * distance * 0.8) + 90
+        pieces.append(
+            f'<i class="fp-cel-bit" style="--x:{x}px;--y:{y}px;'
+            f"--r:{(index * 97) % 540 - 270}deg;--c:{colors[index % len(colors)]};"
+            f'--d:{0.25 + (index % 6) * 0.05:.2f}s"></i>'
+        )
+    return (
+        '<div class="fp-celebrate" role="status" aria-live="polite">'
+        '<div class="fp-cel-box"><div class="fp-cel-stage">'
+        '<span class="fp-cel-ring"></span><span class="fp-cel-ring is-late"></span>'
+        f"{''.join(pieces)}"
+        f'<div class="fp-cel-mascot"><div class="pose-celebrate">{mascot_svg("celebrate")}'
+        "</div></div></div>"
+        '<div class="fp-cel-title">Workout complete!</div>'
+        f'<div class="fp-cel-sub">{html.escape(title)} · added to this week</div>'
+        "</div></div>"
+    )
+
+
+CELEBRATION_CSS = """
+<style>
+.fp-celebrate {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, rgba(16, 185, 129, .22), rgba(11, 18, 32, .82) 60%);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: fp-cel-fade 5s ease .15s both;
+}
+@keyframes fp-cel-fade {
+  0% { opacity: 0; } 8% { opacity: 1; } 78% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+.fp-cel-box { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.fp-cel-stage { position: relative; width: min(18rem, 70vw); height: min(18rem, 70vw); }
+.fp-cel-mascot {
+  position: absolute; inset: 0;
+  animation: fp-cel-pop .9s cubic-bezier(.34, 1.56, .64, 1) both;
+  filter: drop-shadow(0 18px 40px rgba(16, 185, 129, .45));
+}
+.fp-cel-mascot .m-svg { width: 100%; height: 100%; overflow: visible; }
+.fp-cel-mascot svg * { transform-box: fill-box; }
+@keyframes fp-cel-pop {
+  0% { transform: scale(.2) rotate(-20deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(4deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+.fp-cel-ring {
+  position: absolute; inset: 12%; border-radius: 50%;
+  border: 3px solid #34D399; box-shadow: 0 0 30px rgba(52, 211, 153, .7);
+  animation: fp-cel-ring 1.3s cubic-bezier(.2, .8, .2, 1) .25s both;
+}
+.fp-cel-ring.is-late { border-color: #5EEAD4; animation-delay: .55s; }
+@keyframes fp-cel-ring {
+  0% { transform: scale(.3); opacity: 1; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.fp-cel-bit {
+  position: absolute; left: 50%; top: 50%; width: 10px; height: 16px;
+  border-radius: 3px; background: var(--c);
+  animation: fp-cel-fly 1.9s cubic-bezier(.15, .75, .3, 1) var(--d) both;
+}
+.fp-cel-bit:nth-child(3n) { width: 12px; height: 12px; border-radius: 50%; }
+@keyframes fp-cel-fly {
+  0% { transform: translate(-50%, -50%) scale(.2) rotate(0); opacity: 0; }
+  12% { opacity: 1; }
+  100% {
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+    opacity: 0;
+  }
+}
+.fp-cel-title {
+  margin-top: 1.25rem;
+  font: 700 clamp(2.4rem, 6vw, 4rem)/1 "Space Grotesk", "Inter", sans-serif;
+  letter-spacing: -.04em;
+  background: linear-gradient(90deg, #34D399, #5EEAD4, #93C5FD);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: fp-cel-rise .7s cubic-bezier(.2, .8, .2, 1) .35s both;
+}
+.fp-cel-sub {
+  margin-top: .6rem; color: #E2E8F0; font: 500 1.05rem "Inter", sans-serif;
+  animation: fp-cel-rise .7s cubic-bezier(.2, .8, .2, 1) .5s both;
+}
+@keyframes fp-cel-rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fp-celebrate { display: none; } }
+</style>
+"""
 
 MASCOT_CSS = """
 <style>
@@ -232,13 +334,14 @@ MASCOT_CSS = """
   100% { transform: translateY(14px) rotate(260deg); opacity: 0; }
 }
 
-/* Speech bubble: pops in on each page change, then fades away. */
+/* Speech bubble: pops in under Rep on each page change (clear of the brand name),
+   then fades away. */
 .fp-bubble {
-  position: absolute; left: 104%; top: 50%; z-index: 5;
-  padding: .25rem .65rem; border-radius: 999px 999px 999px 4px;
-  background: var(--ink, #0F172A); color: #fff; white-space: nowrap;
+  position: absolute; left: 30%; top: calc(100% + 8px); z-index: 60;
+  padding: .3rem .7rem; border-radius: 4px 999px 999px 999px;
+  background: #F1F5F9; color: #0B1220; white-space: nowrap;
   font: 600 .68rem "Inter", sans-serif; pointer-events: none;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, .18);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
 }
 </style>
 """
@@ -252,9 +355,9 @@ _ENTER = (
     " 100% { opacity: 1; transform: none; }"
 )
 _BUBBLE = (
-    "0% { opacity: 0; transform: translate(-6px, -50%) scale(.7); }"
-    " 12%, 78% { opacity: 1; transform: translate(0, -50%); }"
-    " 100% { opacity: 0; transform: translate(4px, -50%); visibility: hidden; }"
+    "0% { opacity: 0; transform: translateY(-6px) scale(.7); transform-origin: 0 0; }"
+    " 12%, 78% { opacity: 1; transform: none; }"
+    " 100% { opacity: 0; transform: translateY(4px); visibility: hidden; }"
 )
 MASCOT_CSS = MASCOT_CSS.replace(
     "</style>",

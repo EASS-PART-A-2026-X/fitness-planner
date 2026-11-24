@@ -7,8 +7,8 @@ from ui.state import go
 
 NAV_ITEMS = (
     ("dashboard", "home", "Dashboard"),
-    ("coach", "coach", "AI Coach"),
     ("plans", "plans", "Plans"),
+    ("create", "create", "＋ Create"),
     ("activities", "activities", "Activity"),
     ("analytics", "analytics", "Analytics"),
 )

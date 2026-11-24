@@ -208,6 +208,16 @@ class GeneratePlanRequest(RegenerateExercisesRequest):
     frequency_per_week: int = Field(ge=1, le=7)
 
 
+class DraftWorkoutPublic(SQLModel):
+    """An AI-drafted plan that is not stored yet: the user edits it, then saves."""
+
+    title: str
+    icon: str
+    exercises: list[WorkoutExercise]
+    coach_notes: str = ""
+    plan_source: Literal["ai", "offline"] = "ai"
+
+
 class GeneratedWorkoutPublic(WorkoutPlanPublic):
     coach_notes: str = ""
     # "ai", or "offline" when the AI was busy and the local backup coach answered.

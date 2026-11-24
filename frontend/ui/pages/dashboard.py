@@ -15,6 +15,7 @@ from ui.components import (
     stat_tiles,
     workout_icon,
 )
+from ui.dialogs import ask_delete
 from ui.state import go
 
 
@@ -28,7 +29,10 @@ def load_overview(token: str) -> list[api.WorkoutOverview] | None:
         return None
 
 
-def workout_card(workout: api.WorkoutOverview, button_label: str) -> None:
+def workout_card(
+    workout: api.WorkoutOverview, button_label: str, token: str | None = None
+) -> None:
+    """A plan row. With a token, it also gets a delete button (Plans page)."""
     workout_id = workout["id"]
     live = workout["has_unfinished_workout"]
     chips = [
@@ -38,9 +42,23 @@ def workout_card(workout: api.WorkoutOverview, button_label: str) -> None:
     if live:
         chips.insert(0, chip("Finish your workout!", live=True))
     with card():
-        info_col, progress_col, action_col = st.columns(
-            [3, 2, 1.1], vertical_alignment="center"
-        )
+        if token:
+            info_col, progress_col, action_col, delete_col = st.columns(
+                [3, 2, 1.1, 0.35], vertical_alignment="center"
+            )
+            with delete_col, st.container(key=f"fp-trash-{workout_id}"):
+                st.button(
+                    ":material/delete:",
+                    key=f"delete-workout-{workout_id}",
+                    help="Delete plan",
+                    on_click=ask_delete,
+                    args=(workout, f"plans-{workout_id}"),
+                    width="stretch",
+                )
+        else:
+            info_col, progress_col, action_col = st.columns(
+                [3, 2, 1.1], vertical_alignment="center"
+            )
         info_col.markdown(
             '<div class="fp-workout">'
             f"{workout_icon(workout.get('emoji', ''), workout_id)}"
@@ -65,17 +83,16 @@ def first_plan_prompt() -> None:
     with card():
         empty_state(
             "Your first workout starts here",
-            "Let the AI coach draft a plan from your goal and equipment, "
-            "or build one exercise by exercise.",
+            "Pick a workout like running, yoga or upper body, then let the AI "
+            "coach fill in the exercises or add your own.",
             "sparkles",
         )
-        _, coach_col, create_col, _ = st.columns([1, 1.3, 1.3, 1])
-        if coach_col.button(
-            "Plan it with AI", key="empty-coach", type="primary", width="stretch"
-        ):
-            go("coach")
+        _, create_col, _ = st.columns([1, 1.4, 1])
         if create_col.button(
-            "Build it yourself", key="empty-create-workout", width="stretch"
+            "＋ Create your first plan",
+            key="empty-create-workout",
+            type="primary",
+            width="stretch",
         ):
             go("create")
 
@@ -104,14 +121,25 @@ def render(token: str) -> None:
         st.warning(f"Could not load your progress summary. {exc}")
     stat_tiles(
         [
-            ("Active plans", str(len(workouts)), "in your library"),
-            ("This week", f"{done}<small> / {target}</small>", "sessions completed"),
+            ("Active plans", str(len(workouts)), "in your library", "layers"),
+            (
+                "This week",
+                f"{done}<small> / {target}</small>",
+                "sessions completed",
+                "check",
+            ),
             (
                 "12-week total",
                 str(sum(item["completed_sessions"] for item in history)),
                 "sessions logged",
+                "calendar",
             ),
-            ("Streak", f"{charts.streak(history)}<small> wk</small>", "weeks in a row"),
+            (
+                "Streak",
+                f"{charts.streak(history)}<small> wk</small>",
+                "weeks in a row",
+                "flame",
+            ),
         ]
     )
 

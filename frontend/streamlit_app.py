@@ -6,9 +6,10 @@ All HTTP lives in fitness_planner_api.py; pages live in ui/pages/.
 import streamlit as st
 
 import fitness_planner_api as api
-from ui import session
+from ui import dialogs, session
 from ui.components import reset_cards
-from ui.pages import auth, coach, dashboard, editor, header, library, plan, workout
+from ui.mascot import celebration_html
+from ui.pages import auth, dashboard, editor, header, library, plan, workout
 from ui.state import restore_page_from_url
 from ui.theme import inject_theme
 
@@ -48,8 +49,7 @@ header.render()
 token = st.session_state["access_token"]
 if notice := st.session_state.pop("notice", None):
     st.success(notice)
-if st.session_state.pop("celebrate", False):
-    st.balloons()
+celebrate = st.session_state.pop("celebrate", None)
 
 page = st.session_state["page"]
 workout_id = st.session_state.get("selected_workout_id")
@@ -61,8 +61,6 @@ elif page == "detail" and workout_id:
     workout.render(token, workout_id)
 elif page == "edit" and workout_id:
     editor.render_edit(token, workout_id)
-elif page == "coach":
-    coach.render(token)
 elif page == "activities":
     library.render_activities(token)
 elif page == "plans":
@@ -71,3 +69,7 @@ elif page == "analytics":
     library.render_analytics(token)
 else:
     dashboard.render(token)
+dialogs.render_pending(token)
+if celebrate:
+    # Drawn last, so the animation starts once the page underneath has loaded.
+    st.markdown(celebration_html(str(celebrate)), unsafe_allow_html=True)

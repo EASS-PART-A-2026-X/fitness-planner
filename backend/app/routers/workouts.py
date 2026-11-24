@@ -19,6 +19,7 @@ from app.ai_client import (
 )
 from app.db import database as db
 from app.models.workout import (
+    DraftWorkoutPublic,
     GeneratedWorkoutPublic,
     GeneratePlanRequest,
     RecentWorkoutPublic,
@@ -265,6 +266,39 @@ def generate_workout(
     workout = create_workout(plan, session, current_user)
     return GeneratedWorkoutPublic.model_validate(
         workout.model_dump() | {"coach_notes": draft.coach_notes, "plan_source": source}
+    )
+
+
+@router.post(
+    "/draft", response_model=DraftWorkoutPublic, response_model_exclude_none=True
+)
+def draft_workout(
+    body: GeneratePlanRequest,
+    ai: AIClientDep,
+    session: db.SessionDep,
+    current_user: auth.CurrentUser,
+) -> DraftWorkoutPublic:
+    """Ask the AI for exercises without storing anything; the user saves later."""
+    request = PlanRequest.model_validate(
+        body.model_dump() | {"last_workout": _last_workout(session, current_user.id)}
+    )
+    draft, source = _ask_ai(ai, request)
+    plan = _validated_plan(
+        {
+            "title": body.plan_name or draft.title,
+            "goal": body.goal,
+            "experience_level": body.experience_level,
+            "frequency_per_week": body.frequency_per_week,
+            "emoji": draft.icon,
+            "exercises": _exercises(draft),
+        }
+    )
+    return DraftWorkoutPublic(
+        title=plan.title,
+        icon=plan.emoji,
+        exercises=plan.exercises,
+        coach_notes=draft.coach_notes,
+        plan_source=source,
     )
 
 

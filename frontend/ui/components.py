@@ -7,6 +7,7 @@ from datetime import date
 import streamlit as st
 
 import fitness_planner_api as api
+from ui.catalog import WORKOUT_TYPES
 from ui.exercises import exercise_name, exercise_spec
 from ui.mascot import mascot_html
 
@@ -25,9 +26,26 @@ UI_ICONS = {
     "lock": '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     "timer": '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
     "plus": '<path d="M12 5v14M5 12h14"/>',
+    "flame": '<path d="M12 22c4 0 7-2.7 7-6.8 0-3.9-2.7-6.4-4.4-8.6-.5 2.3-1.7 3.6-3 4.2C11.8 7.4 10.4 4.3 8 2c.3 3.6-3 6.5-3 11.2C5 19.3 8 22 12 22Z"/>',
+    "target": '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+    "calendar": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    "trophy": '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+    "layers": '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
+    "check": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
 }
-CARDIO_ICONS = {"running", "cycling", "swimming", "timer"}
-STRENGTH_ICONS = {"weights", "boxing", "chart"}
+STAT_TONES = {
+    "flame": "amber",
+    "trophy": "amber",
+    "target": "coral",
+    "calendar": "blue",
+    "chart": "blue",
+    "layers": "violet",
+}
+CARDIO_ICONS = {"running", "cycling", "swimming", "timer", "hiit"}
+STRENGTH_ICONS = {"weights", "boxing", "chart", "upper", "lower", "fullbody", "core"}
+MIND_ICONS = {"yoga", "pilates", "stretch"}
+# Workout types from the Create flow use the bigger line-art people.
+ART_ICONS = {item.id: item.art for item in WORKOUT_TYPES}
 
 
 def plain(text: str) -> str:
@@ -60,25 +78,40 @@ def html_block(markup: str) -> None:
 
 
 def icon_id_for_workout(value: str, workout_id: int | None = None) -> str:
-    if value in WORKOUT_ICONS:
+    if value in WORKOUT_ICONS or value in ART_ICONS:
         return value
     return tuple(WORKOUT_ICONS)[(workout_id or 0) % len(WORKOUT_ICONS)]
 
 
-def icon(name: str) -> str:
-    paths = WORKOUT_ICONS.get(name) or UI_ICONS[name]
-    tone = (
-        " is-cardio"
-        if name in CARDIO_ICONS
-        else " is-strength"
-        if name in STRENGTH_ICONS
-        else ""
-    )
+def tone_class(name: str) -> str:
+    if name in CARDIO_ICONS:
+        return " is-cardio"
+    if name in STRENGTH_ICONS:
+        return " is-strength"
+    if name in MIND_ICONS:
+        return " is-mind"
+    return ""
+
+
+def art_svg(paths: str, stroke: float = 2.6) -> str:
     return (
-        f'<span class="fp-icon{tone}" aria-hidden="true">'
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
-        f'stroke-linecap="round" stroke-linejoin="round">{paths}</svg></span>'
+        '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" '
+        f'stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round">'
+        f"{paths}</svg>"
     )
+
+
+def icon(name: str) -> str:
+    if name in ART_ICONS:
+        svg = art_svg(ART_ICONS[name], 4)
+    else:
+        paths = WORKOUT_ICONS.get(name) or UI_ICONS[name]
+        svg = (
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+            f"{paths}</svg>"
+        )
+    return f'<span class="fp-icon{tone_class(name)}" aria-hidden="true">{svg}</span>'
 
 
 def workout_icon(value: str, workout_id: int | None = None) -> str:
@@ -108,6 +141,9 @@ def ring(percent: int, number: str, caption: str) -> str:
         f'<div class="fp-ring" role="progressbar" aria-valuenow="{percent}" '
         'aria-valuemin="0" aria-valuemax="100">'
         '<svg viewBox="0 0 120 120" aria-hidden="true">'
+        '<defs><linearGradient id="fp-ring-grad" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#14B8A6"/>'
+        "</linearGradient></defs>"
         f'<circle class="fp-ring-track" cx="60" cy="60" r="{radius}" fill="none" stroke-width="10"/>'
         f'<circle class="fp-ring-value" cx="60" cy="60" r="{radius}" fill="none" stroke-width="10" '
         f'stroke-linecap="round" stroke-dasharray="{circumference:.1f}" '
@@ -129,15 +165,26 @@ def hero(
     )
 
 
-def stat_tiles(tiles: list[tuple[str, str, str]]) -> None:
-    """tiles: (label, value_html, sub). value_html may hold a trusted <small>."""
-    cells = "".join(
-        f'<div class="fp-stat"><div class="fp-stat-label">{safe_html(label)}</div>'
-        f'<div class="fp-stat-value">{value}</div>'
-        f'<div class="fp-stat-sub">{safe_html(sub)}</div></div>'
-        for label, value, sub in tiles
+def stat_icon(name: str) -> str:
+    tone = STAT_TONES.get(name)
+    return (
+        f'<span class="fp-stat-icon{f" tone-{tone}" if tone else ""}" aria-hidden="true">'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" '
+        f'stroke-linecap="round" stroke-linejoin="round">{UI_ICONS[name]}</svg></span>'
     )
-    html_block(f'<div class="fp-stats">{cells}</div>')
+
+
+def stat_tiles(tiles: list[tuple[str, ...]]) -> None:
+    """tiles: (label, value_html, sub[, icon]). value_html may hold a trusted <small>."""
+    cells = []
+    for label, value, sub, *rest in tiles:
+        badge = stat_icon(rest[0]) if rest else ""
+        cells.append(
+            f'<div class="fp-stat">{badge}<div class="fp-stat-label">{safe_html(label)}</div>'
+            f'<div class="fp-stat-value">{value}</div>'
+            f'<div class="fp-stat-sub">{safe_html(sub)}</div></div>'
+        )
+    html_block(f'<div class="fp-stats">{"".join(cells)}</div>')
 
 
 def section(title: str) -> None:

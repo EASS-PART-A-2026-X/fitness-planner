@@ -10,12 +10,12 @@ gatherUsageStats = false
 toolbarMode = "minimal"
 
 [theme]
-base = "light"
+base = "dark"
 primaryColor = "#10B981"
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#F1F5F9"
-textColor = "#0F172A"
-borderColor = "#E2E8F0"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#16223A"
+textColor = "#E2E8F0"
+borderColor = "#24324D"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
 headingFontWeights = [700, 650, 600]

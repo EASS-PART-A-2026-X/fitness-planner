@@ -1,24 +1,79 @@
+<div align="center">
+
+<img src="docs/rep.svg" width="180" alt="Rep, the Fitness Planner mascot: a round green buddy with a coral headband, waving">
+
 # Fitness Planner
 
-An AI-powered workout planner. Describe your goal, your equipment and your time;
-an AI coach drafts a structured routine, and the app guides you through every
-set, times your rests, and tracks weekly consistency.
+**Your training plan, a pocket coach, and a tiny green cheerleader named Rep.**
+
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-frontend-FF4B4B?logo=streamlit&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
+![Pydantic AI](https://img.shields.io/badge/Pydantic%20AI-coach-E92063)
+![Tests](https://img.shields.io/badge/tests-214%20passing-10B981)
+
+</div>
+
+---
+
+## 👋 Meet Rep
+
+Most workouts don't fail at the gym. They fail the night before, when "I'll just
+wing it" turns into skipping it. Fitness Planner fixes the boring part: you say
+what you're training, an AI coach drafts the exercises, and Rep, the mascot in the
+corner, waves, thinks, lifts, runs and cheers you through every page.
+
+When you finish a workout, Rep jumps for joy in a full-screen confetti
+celebration. You earned it.
+
+## ✨ How it works, in three steps
+
+| | Step | What happens |
+|---|---|---|
+| 🏃 | **Pick** | Choose a workout from a picture grid (running, yoga, pilates, upper body, HIIT, swimming… 12 in all) or name your own. |
+| 📝 | **Plan** | Set your goal, sessions per week and level. Press **✦ Generate exercises** and the AI coach fills in sets, reps and rest, or tap quick-add chips and build it yourself. Change anything before you save. |
+| 🎉 | **Train & celebrate** | Start a session, log the reps you *actually* did, rest with a countdown ring, and finish to a big celebration. Your streak and weekly chart update. |
+
+## 🧰 What's inside
+
+- **Picture-first plan builder.** Every workout type has its own line-art athlete, colour and starter exercises.
+- **AI coach that drafts but never decides.** It suggests exercises; nothing is saved until you press *Create plan*. If the AI is busy, an offline backup coach steps in so you're never stuck.
+- **A friendly exercise editor.** One "Reps" number for every set (or flip on *Different reps per set*), a rest slider, and a remove button on every row.
+- **Guided live sessions.** Pick an exercise, log each set, skip or wait out the rest timer, and resume any time.
+- **Progress you can see.** Dashboard, activity timeline, streaks and a 12-week consistency chart.
+- **Safe deletes.** Deleting a plan, from the Plans list or the edit page, always asks first in a popup.
+- **Private by default.** Accounts, hashed passwords and per-user ownership checks on every request.
+
+## 🚀 Quick start
+
+```bash
+docker compose up --build --wait
+```
+
+Open <http://localhost:8501>, create an account, and pick your first workout.
+No API key needed: the coach runs offline until you [add a free one](#free-ai-setup).
+
+---
+
+## The project, in detail
 
 **Purpose:** prevent disorganized training by turning goals into structured,
 trackable plans.
 
 **Operational principle:** each person signs in before managing plans, and the
-backend checks ownership on every request. Users create plans by hand or with
-the AI coach, then start a session: each set and its actual reps are saved as
+backend checks ownership on every request. Users create a plan in two steps
+(pick a workout type, then fill in details and exercises, optionally drafted by
+the AI coach), then start a session: each set and its actual reps are saved as
 they go, so a session can be resumed later or cancelled without counting.
 Finishing a session records a completion; dashboards and analytics compare
 completed sessions with the weekly targets of all plans.
 
 ## User stories
 1. As a user, I can create an account and sign in so that my plans are private.
-2. As a user, I can ask the AI coach for a plan that fits my goal, equipment and
-   time, and it is saved to my plans.
-3. As a user, I can create, view, edit and delete plans by hand.
+2. As a user, I can pick a workout type and ask the AI coach to draft exercises
+   that fit my goal, equipment and time, edit them, and save the plan.
+3. As a user, I can create, view, edit and delete plans by hand; deleting always
+   asks for confirmation.
 4. As a user, I can run a session: pick an exercise, record actual reps, rest
    with a timer, and see completed sets.
 5. As a user, I can see my dashboard, recent activity and weekly analytics.
@@ -86,8 +141,8 @@ starts empty and you create an account on the sign-in screen.
 
 ```bash
 cd ai-service && uv run pytest     # 50 passed, offline, no API key
-cd backend    && uv run pytest     # 95 passed, AI calls faked with httpx.MockTransport
-cd frontend   && uv run pytest     # 53 passed (AppTest + respx + live-backend integration)
+cd backend    && uv run pytest     # 101 passed, AI calls faked with httpx.MockTransport
+cd frontend   && uv run pytest     # 61 passed (AppTest + respx + live-backend integration)
 ```
 
 Each folder also passes `uv run ruff check .` and `uv run ruff format --check .`.
@@ -162,8 +217,8 @@ How it stays within the free tier and never "runs out":
   `gemini-3.5-flash failed: timeout; trying the next model` and
   `plan used the offline coach: all models failed: … 503; … timeout`.
 - **Friendly notice.** When the backup coach wrote the plan, the backend
-  returns `plan_source: "offline"` and the AI Coach page says so ("The AI
-  coach is busy right now, so your backup coach built this plan…"). To debug,
+  returns `plan_source: "offline"` and the Create page says so ("The AI
+  coach is busy right now, so your backup coach drafted these exercises…"). To debug,
   set `AI_FALLBACK=off` in `.env`: failures then show "The AI coach is
   unavailable right now" instead of a backup plan.
 
@@ -172,7 +227,8 @@ How it stays within the free tier and never "runs out":
 | Call | Request | Success | Errors |
 |---|---|---|---|
 | ai-service `POST /plan` | `PlanRequest` (`extra="forbid"`) | 200 `WorkoutPlanDraft` | 422 bad request · 429 budget · 502 invalid output · 500 provider · 504 timeout |
-| backend `POST /workouts/generate` | goal, level, workouts/week, minutes; optional plan name, equipment, note | 201 stored plan + `coach_notes` | 422 (AI never called) · 503 · 502 |
+| backend `POST /workouts/draft` | goal, level, workouts/week, minutes; optional plan name, equipment, note | 200 draft (title, icon, exercises, `coach_notes`), **not stored** (used by the Create page) | 422 (AI never called) · 503 · 502 |
+| backend `POST /workouts/generate` | same as `/draft` | 201 stored plan + `coach_notes` | 422 (AI never called) · 503 · 502 |
 | backend `POST /workouts/{id}/generate` | minutes; optional equipment, note | 200 plan with new exercises | 404 · 422 · 503 · 502 |
 
 The ai-service owns the schema. The backend keeps its own copy in
@@ -260,6 +316,10 @@ following:
 - added the contract test and Docker Compose;
 - split and restyled the Streamlit frontend with a dark theme and added the AI
   Coach page;
+- redesigned the UI (navy glow theme, glass cards, stat tiles), replaced the AI
+  Coach page with the two-step picture-grid Create flow and the backend
+  `/workouts/draft` endpoint, rebuilt the exercise editor, added delete
+  dialogs, the finish-workout celebration and the mascot logo (`docs/rep.svg`);
 - updated the stale tests.
 
 Checks I ran: `uv run pytest` and both ruff commands in all three folders,

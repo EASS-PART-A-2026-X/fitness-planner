@@ -121,15 +121,15 @@ def test_only_the_api_module_talks_http_or_databases():
         assert not imported & forbidden, path
 
 
-def test_light_theme_mascot_and_mobile_styles_are_configured():
+def test_dark_theme_mascot_and_mobile_styles_are_configured():
     theme = (FRONTEND / "ui" / "theme.py").read_text()
     config = (FRONTEND / ".streamlit" / "config.toml").read_text()
 
     assert "--primary: #10B981" in theme
-    assert "--bg: #F8FAFC" in theme
+    assert "--bg: #0B1220" in theme
     assert "@media (max-width: 760px)" in theme
     assert "prefers-reduced-motion: reduce" in theme
-    assert 'base = "light"' in config
+    assert 'base = "dark"' in config
     assert "gatherUsageStats = false" in config
 
 
@@ -228,12 +228,13 @@ def test_expired_saved_session_is_removed(backend):
 # --- Dashboard ---------------------------------------------------------------
 
 
-def test_dashboard_empty_state_offers_ai_and_manual_paths(backend):
+def test_dashboard_empty_state_points_to_create(backend):
     at = start_app(backend, [])
 
     assert "Your first workout starts here" in markdown_text(at)
-    assert at.button(key="empty-coach")
-    assert at.button(key="empty-create-workout")
+    at.button(key="empty-create-workout").click().run()
+    assert "What are you training?" in markdown_text(at)
+    assert at.button(key="type-running")
 
 
 def test_dashboard_shows_plans_progress_and_stats(backend):
@@ -305,7 +306,7 @@ def test_activity_page_lists_recent_sessions(backend):
     assert "Squats · 9, 8" in markdown_text(at)
 
 
-# --- AI coach ----------------------------------------------------------------
+# --- Create: pick a workout, AI fill ---------------------------------------
 
 GENERATED = WORKOUT | {
     "id": 9,
@@ -322,26 +323,75 @@ GENERATED = WORKOUT | {
     ],
     "coach_notes": "Add a rep each week.",
 }
+DRAFT = {
+    "title": "Dumbbell strength",
+    "icon": "weights",
+    "exercises": GENERATED["exercises"],
+    "coach_notes": "Add a rep each week.",
+}
 
 
-def open_coach(backend) -> AppTest:
+def open_create(backend, type_id: str = "upper") -> AppTest:
     at = start_app(backend, [WORKOUT])
-    at.button(key="top-nav-coach").click().run()
-    at.text_input(key="coach-goal").input("Build strength")
-    at.multiselect(key="coach-equipment").select("dumbbells")
-    at.text_input(key="coach-notes").input("Short sessions")
+    at.button(key="top-nav-create").click().run()
+    at.button(key=f"type-{type_id}").click().run()
     return at
 
 
-def test_coach_sends_a_small_request_and_shows_the_saved_plan(backend):
-    route = backend.post("/workouts/generate").mock(
-        return_value=httpx.Response(201, json=GENERATED)
+def test_nav_has_create_instead_of_ai_coach(backend):
+    at = start_app(backend, [WORKOUT])
+
+    keys = [button.key for button in at.button]
+    assert "top-nav-create" in keys
+    assert "top-nav-coach" not in keys
+
+
+def test_old_coach_link_opens_create(backend):
+    at = AppTest.from_file(str(APP), default_timeout=30)
+    at.session_state["access_token"] = TOKEN
+    at.session_state["username"] = "tester"
+    at.query_params["fp_view"] = "coach"
+
+    at.run()
+
+    assert "What are you training?" in markdown_text(at)
+
+
+def test_picking_a_workout_prefills_the_name_and_shows_its_picture(backend):
+    at = open_create(backend, "running")
+
+    assert at.text_input(key="create-0-title").value == "Running"
+    assert "Plan your" in markdown_text(at)
+    # Running offers its own quick-add starters.
+    assert at.button(key="create-0-starter-0").label.endswith("Easy run (minutes)")
+
+
+def test_custom_workout_needs_a_name(backend):
+    at = start_app(backend, [WORKOUT])
+    at.button(key="top-nav-create").click().run()
+
+    at.button(key="type-custom").click().run()
+    assert "Give your workout a name" in at.warning[0].value
+
+    at.text_input(key="create-custom-name").input("Climbing")
+    at.button(key="type-custom").click().run()
+    assert at.text_input(key="create-0-title").value == "Climbing"
+
+
+def test_ai_fill_drafts_exercises_without_saving(backend):
+    draft = backend.post("/workouts/draft").mock(
+        return_value=httpx.Response(200, json=DRAFT)
     )
-    at = open_coach(backend)
+    save = backend.post("/workouts")
+    at = open_create(backend)
+    at.text_input(key="create-0-goal").input("Build strength")
+    at.multiselect(key="create-0-equipment").select("dumbbells")
+    at.text_input(key="create-0-notes").input("Short sessions")
 
-    at.button(key="coach-submit").click().run()
+    at.button(key="create-0-ai").click().run()
 
-    assert json.loads(route.calls[0].request.content) == {
+    assert json.loads(draft.calls[0].request.content) == {
+        "plan_name": "Upper body",
         "goal": "Build strength",
         "experience_level": "beginner",
         "frequency_per_week": 3,
@@ -349,84 +399,54 @@ def test_coach_sends_a_small_request_and_shows_the_saved_plan(backend):
         "equipment": ["dumbbells"],
         "notes": "Short sessions",
     }
-    text = markdown_text(at)
-    assert "Dumbbell strength" in text
-    assert "Add a rep each week." in text
-    assert "Goblet squat" in text
-    assert at.button(key="coach-open")
+    assert not save.called
+    assert at.text_input(key="create-0-name-0").value == "Goblet squat"
+    assert at.toggle(key="create-0-vary-0").value is True
+    assert at.text_input(key="create-0-replist-0").value == "10, 10, 8"
+    assert "Add a rep each week." in markdown_text(at)
 
 
-def test_backup_plan_shows_a_friendly_notice(backend):
-    backend.post("/workouts/generate").mock(
-        return_value=httpx.Response(201, json=GENERATED | {"plan_source": "offline"})
+def test_backup_draft_shows_a_friendly_notice(backend):
+    backend.post("/workouts/draft").mock(
+        return_value=httpx.Response(200, json=DRAFT | {"plan_source": "offline"})
     )
-    at = open_coach(backend)
+    at = open_create(backend)
+    at.text_input(key="create-0-goal").input("Build strength")
 
-    at.button(key="coach-submit").click().run()
+    at.button(key="create-0-ai").click().run()
 
-    assert "backup coach built this plan" in at.info[0].value
-    assert "Dumbbell strength" in markdown_text(at)
+    assert "backup coach drafted these exercises" in at.info[0].value
     assert not at.error
-
-
-def test_ai_plan_shows_no_backup_notice(backend):
-    backend.post("/workouts/generate").mock(
-        return_value=httpx.Response(201, json=GENERATED | {"plan_source": "ai"})
-    )
-    at = open_coach(backend)
-
-    at.button(key="coach-submit").click().run()
-
-    assert not any("backup coach" in item.value for item in at.info)
-
-
-def test_coach_needs_only_a_goal(backend):
-    route = backend.post("/workouts/generate").mock(
-        return_value=httpx.Response(201, json=GENERATED)
-    )
-    at = start_app(backend, [WORKOUT])
-    at.button(key="top-nav-coach").click().run()
-    at.text_input(key="coach-name").input("Leg day")
-    at.text_input(key="coach-goal").input("Stronger legs")
-
-    at.button(key="coach-submit").click().run()
-
-    assert json.loads(route.calls[0].request.content) == {
-        "plan_name": "Leg day",
-        "goal": "Stronger legs",
-        "experience_level": "beginner",
-        "frequency_per_week": 3,
-        "minutes_per_session": 45,
-    }
 
 
 @pytest.mark.parametrize(
     ("status", "message"),
     [(503, "AI coach is unavailable"), (502, "could not use")],
 )
-def test_coach_failures_show_a_sentence_and_keep_input(backend, status, message):
-    backend.post("/workouts/generate").mock(
+def test_ai_fill_failures_show_a_sentence_and_keep_input(backend, status, message):
+    backend.post("/workouts/draft").mock(
         return_value=httpx.Response(status, json={"detail": "x"})
     )
-    at = open_coach(backend)
+    at = open_create(backend)
+    at.text_input(key="create-0-goal").input("Build strength")
+    at.text_input(key="create-0-notes").input("Short sessions")
 
-    at.button(key="coach-submit").click().run()
+    at.button(key="create-0-ai").click().run()
 
     assert message in at.error[0].value
-    assert at.text_input(key="coach-goal").value == "Build strength"
-    assert at.text_input(key="coach-notes").value == "Short sessions"
+    assert at.text_input(key="create-0-goal").value == "Build strength"
+    assert at.text_input(key="create-0-notes").value == "Short sessions"
     assert not at.exception
 
 
-def test_coach_requires_a_goal_before_calling_the_backend(backend):
-    route = backend.post("/workouts/generate")
-    at = start_app(backend, [WORKOUT])
-    at.button(key="top-nav-coach").click().run()
+def test_ai_fill_requires_a_goal_before_calling_the_backend(backend):
+    route = backend.post("/workouts/draft")
+    at = open_create(backend)
 
-    at.button(key="coach-submit").click().run()
+    at.button(key="create-0-ai").click().run()
 
     assert not route.called
-    assert "Tell the coach your goal" in at.warning[0].value
+    assert "Fill in the goal" in at.warning[0].value
 
 
 def test_plan_page_regenerates_exercises_with_ai(backend):
@@ -448,52 +468,65 @@ def test_plan_page_regenerates_exercises_with_ai(backend):
 # --- Create / edit / delete --------------------------------------------------
 
 
-def test_create_plan_sends_structured_exercises_and_shows_success(backend):
-    at = start_app(backend, [])
-    at.button(key="empty-create-workout").click().run()
+def test_create_plan_sends_structured_exercises_and_the_chosen_icon(backend):
+    at = open_create(backend, "lower")
     post = backend.post("/workouts").mock(
-        return_value=httpx.Response(201, json=WORKOUT | {"id": 8, "title": "Strength"})
+        return_value=httpx.Response(201, json=WORKOUT | {"id": 8, "title": "Legs"})
     )
-    at.session_state["create-0-icon"] = "weights"
 
-    at.text_input(key="create-0-title").input("Strength")
+    at.text_input(key="create-0-title").input("Legs")
     at.text_input(key="create-0-goal").input("Build strength")
-    at.text_input(key="create-0-experience").input("beginner")
     at.text_input(key="create-0-name-0").input("Deadlifts")
     at.number_input(key="create-0-sets-0").set_value(3)
-    at.text_input(key="create-0-reps-0").input("8, 8, 6")
-    at.number_input(key="create-0-rest-0").set_value(90)
+    at.number_input(key="create-0-reps-0").set_value(8)
+    at.select_slider(key="create-0-rest-0").set_value(90)
     at.button(key="create-0-submit").click().run()
 
     assert json.loads(post.calls[0].request.content) == {
-        "emoji": "weights",
-        "title": "Strength",
+        "emoji": "lower",
+        "title": "Legs",
         "goal": "Build strength",
         "frequency_per_week": 3,
         "experience_level": "beginner",
         "exercises": [
-            {"name": "Deadlifts", "sets": 3, "reps": "8, 8, 6", "rest_seconds": 90}
+            {"name": "Deadlifts", "sets": 3, "reps": "8, 8, 8", "rest_seconds": 90}
         ],
     }
-    assert any("Created Strength" in item.value for item in at.success)
+    assert any("Created Legs" in item.value for item in at.success)
 
 
-def test_create_plan_can_add_exercise_rows(backend):
-    at = start_app(backend, [])
-    at.button(key="empty-create-workout").click().run()
+def test_different_reps_per_set_uses_the_comma_list(backend):
+    at = open_create(backend)
+    at.number_input(key="create-0-sets-0").set_value(3)
+    at.number_input(key="create-0-reps-0").set_value(12)
+
+    at.toggle(key="create-0-vary-0").set_value(True).run()
+
+    assert at.text_input(key="create-0-replist-0").value == "12, 12, 12"
+
+
+def test_quick_add_fills_the_blank_row_and_rows_can_be_removed(backend):
+    at = open_create(backend, "upper")
+
+    at.button(key="create-0-starter-0").click().run()
+    assert at.text_input(key="create-0-name-1").value == "Push-ups"
+    assert at.session_state["create-0-rows"] == [1]
+
     at.button(key="create-0-add-exercise").click().run()
+    at.button(key="create-0-starter-1").click().run()
+    assert at.session_state["create-0-rows"] == [1, 2, 3]
 
-    assert at.text_input(key="create-0-name-1")
-    assert at.number_input(key="create-0-rest-1")
+    at.button(key="create-0-remove-2").click().run()
+    assert at.session_state["create-0-rows"] == [1, 3]
+    assert at.text_input(key="create-0-name-3").value == "Dumbbell rows"
 
 
 def test_missing_fields_are_caught_before_any_request(backend):
-    at = start_app(backend, [])
-    at.button(key="empty-create-workout").click().run()
+    at = open_create(backend)
     post = backend.post("/workouts")
 
+    at.text_input(key="create-0-title").input("")
     at.text_input(key="create-0-goal").input("Build strength")
-    at.text_input(key="create-0-experience").input("beginner")
     at.button(key="create-0-submit").click().run()
 
     assert not post.called
@@ -502,16 +535,13 @@ def test_missing_fields_are_caught_before_any_request(backend):
 
 
 def test_backend_validation_error_is_shown_in_words(backend):
-    at = start_app(backend, [])
-    at.button(key="empty-create-workout").click().run()
+    at = open_create(backend)
     backend.post("/workouts").mock(
         return_value=httpx.Response(
             422, json={"detail": [{"loc": ["body", "title"], "msg": "too long"}]}
         )
     )
-    at.text_input(key="create-0-title").input("Plan")
     at.text_input(key="create-0-goal").input("Goal")
-    at.text_input(key="create-0-experience").input("beginner")
     at.text_input(key="create-0-name-0").input("Squats")
     at.button(key="create-0-submit").click().run()
 
@@ -528,13 +558,12 @@ def test_legacy_plan_converts_to_structured_exercises_when_saved(backend):
     at.button(key="open-workout-7").click().run()
     at.button(key="edit-workout").click().run()
     assert at.text_input(key="edit-7-name-0").value == "Squats"
-    assert at.text_input(key="edit-7-reps-0").value == "12"
+    assert at.number_input(key="edit-7-reps-0").value == 12
     at.text_input(key="edit-7-title").input("Updated")
     at.button(key="edit-7-save").click().run()
 
     body = json.loads(patch.calls[0].request.content)
     assert body["title"] == "Updated"
-    assert body["emoji"] == "running"
     assert body["exercises"] == [
         {"name": "Squats", "sets": 1, "reps": "12", "rest_seconds": 60},
         {"name": "Push-ups", "sets": 1, "reps": "10", "rest_seconds": 60},
@@ -560,7 +589,7 @@ def test_edit_preserves_ai_coaching_notes(backend):
     )
 
 
-def test_delete_requires_confirmation(backend):
+def test_delete_from_edit_asks_in_a_dialog(backend):
     set_workout_detail(backend)
     at = start_app(backend, [WORKOUT])
     delete = backend.delete("/workouts/7").mock(return_value=httpx.Response(204))
@@ -569,10 +598,33 @@ def test_delete_requires_confirmation(backend):
     at.button(key="edit-workout").click().run()
     at.button(key="edit-7-delete").click().run()
     assert not delete.called
+    assert "can't be undone" in markdown_text(at)
     at.button(key="edit-7-confirm-delete").click().run()
 
     assert delete.called
     assert any("Deleted Full Body" in item.value for item in at.success)
+
+
+def test_delete_from_plans_list_asks_in_a_dialog(backend):
+    at = start_app(backend, [WORKOUT])
+    delete = backend.delete("/workouts/7").mock(return_value=httpx.Response(204))
+    at.button(key="top-nav-plans").click().run()
+
+    at.button(key="delete-workout-7").click().run()
+    assert not delete.called
+    at.button(key="plans-7-cancel-delete").click().run()
+    assert not delete.called
+
+    at.button(key="delete-workout-7").click().run()
+    at.button(key="plans-7-confirm-delete").click().run()
+    assert delete.called
+    assert any("Deleted Full Body" in item.value for item in at.success)
+
+
+def test_dashboard_cards_have_no_delete_button(backend):
+    at = start_app(backend, [WORKOUT])
+
+    assert "delete-workout-7" not in [button.key for button in at.button]
 
 
 # --- Live session ------------------------------------------------------------
@@ -615,6 +667,7 @@ def test_finish_workout_records_completion(backend):
 
     assert json.loads(complete.calls[0].request.content) == {"completed_sets": []}
     assert any("Workout complete!" in item.value for item in at.success)
+    assert "fp-celebrate" in markdown_text(at)
 
 
 def test_lost_reply_on_save_warns_it_may_have_been_saved(backend):

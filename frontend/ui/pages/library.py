@@ -13,26 +13,22 @@ def render_plans(token: str) -> None:
     workouts = load_overview(token)
     if workouts is None:
         return
-    title_col, coach_col, create_col = st.columns(
-        [3, 1, 1], vertical_alignment="bottom"
-    )
+    title_col, create_col = st.columns([4, 1], vertical_alignment="bottom")
     with title_col:
         page_header(
             "Your routines",
             "Training plans",
             "Open a plan to review it, start a session, or let the AI refresh it.",
         )
-    if coach_col.button("✦ AI Coach", key="plans-coach", width="stretch"):
-        go("coach")
     if create_col.button(
-        "＋ Create workout", key="create-workout", type="primary", width="stretch"
+        "＋ Create plan", key="create-workout", type="primary", width="stretch"
     ):
         go("create")
     if not workouts:
         first_plan_prompt()
         return
     for workout in workouts:
-        workout_card(workout, "View")
+        workout_card(workout, "View", token=token)
 
 
 def render_activities(token: str) -> None:
@@ -83,18 +79,25 @@ def render_analytics(token: str) -> None:
     best = max(history, key=lambda item: item["completed_sessions"])
     stat_tiles(
         [
-            ("Completed", str(completed), f"sessions in {len(history)} weeks"),
-            ("Planned", str(planned), "target sessions"),
+            ("Completed", str(completed), f"sessions in {len(history)} weeks", "check"),
+            ("Planned", str(planned), "target sessions", "calendar"),
             (
                 "Completion",
                 f"{round(completed / planned * 100) if planned else 0}%",
                 "of planned sessions",
+                "target",
             ),
-            ("Streak", f"{charts.streak(history)}<small> wk</small>", "weeks in a row"),
+            (
+                "Streak",
+                f"{charts.streak(history)}<small> wk</small>",
+                "weeks in a row",
+                "flame",
+            ),
             (
                 "Best week",
                 str(best["completed_sessions"]),
                 f"week of {best['week_start']}",
+                "trophy",
             ),
         ]
     )

@@ -205,6 +205,61 @@ def test_broken_contract_returns_502(authenticated_client, fake_ai, handler):
     assert authenticated_client.get("/workouts").json() == []
 
 
+def test_draft_returns_exercises_and_stores_nothing(authenticated_client, fake_ai):
+    calls = fake_ai(
+        lambda request: httpx.Response(
+            200, json=DRAFT, headers={"X-Plan-Source": "offline"}
+        )
+    )
+
+    response = authenticated_client.post(
+        "/workouts/draft", json=BODY | {"plan_name": "Morning run"}
+    )
+
+    assert response.status_code == 200
+    draft = response.json()
+    assert draft["title"] == "Morning run"
+    assert draft["icon"] == "weights"
+    assert draft["exercises"][0] == DRAFT["exercises"][0]
+    assert "notes" not in draft["exercises"][1]
+    assert draft["coach_notes"] == "Add one rep per week."
+    assert draft["plan_source"] == "offline"
+    assert json.loads(calls[0].content)["plan_name"] == "Morning run"
+    assert authenticated_client.get("/workouts").json() == []
+
+
+@pytest.mark.parametrize(
+    ("handler", "code"),
+    [
+        (answer({"detail": "boom"}, 500), 503),
+        (answer({"detail": "nope"}, 502), 502),
+        (answer(DRAFT | {"icon": "rocket"}), 502),
+    ],
+)
+def test_draft_maps_ai_failures_like_generate(
+    authenticated_client, fake_ai, handler, code
+):
+    fake_ai(handler)
+
+    response = authenticated_client.post("/workouts/draft", json=BODY)
+
+    assert response.status_code == code
+    assert authenticated_client.get("/workouts").json() == []
+
+
+def test_draft_rejects_invalid_input_without_ai_call(authenticated_client, fake_ai):
+    calls = fake_ai(answer())
+
+    response = authenticated_client.post("/workouts/draft", json=BODY | {"goal": ""})
+
+    assert response.status_code == 422
+    assert calls == []
+
+
+def test_draft_requires_login(client, fake_ai):
+    assert client.post("/workouts/draft", json=BODY).status_code == 401
+
+
 def test_regenerate_replaces_exercises_of_own_plan(authenticated_client, fake_ai):
     workout = authenticated_client.post(
         "/workouts",

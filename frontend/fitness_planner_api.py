@@ -102,6 +102,14 @@ class GeneratedWorkout(WorkoutPlan):
     plan_source: NotRequired[str]
 
 
+class DraftWorkout(TypedDict):
+    title: str
+    icon: str
+    exercises: list[Exercise]
+    coach_notes: str
+    plan_source: NotRequired[str]
+
+
 class User(TypedDict):
     id: int
     username: str
@@ -218,12 +226,13 @@ def _request(
         raise BackendError(
             "That workout plan no longer exists. Reload the page to see the current plans."
         )
-    if response.status_code == 503 and path.endswith("/generate"):
+    ai_route = path.endswith(("/generate", "/draft"))
+    if response.status_code == 503 and ai_route:
         raise AIUnavailable(
             "The AI coach is unavailable right now. Your plans still work; "
             "try again in a minute."
         )
-    if response.status_code == 502 and path.endswith("/generate"):
+    if response.status_code == 502 and ai_route:
         raise AIBadOutput(
             "The AI coach returned a plan we could not use. "
             "Try again or adjust your request."
@@ -334,6 +343,13 @@ def generate_plan(token: str, request: PlanRequest) -> GeneratedWorkout:
     """Ask the AI coach for a new plan; the backend stores it and returns it."""
     return _request(
         "POST", "/workouts/generate", token=token, json=request, timeout=AI_TIMEOUT
+    )
+
+
+def draft_plan(token: str, request: PlanRequest) -> DraftWorkout:
+    """Ask the AI coach for exercises without saving; the user edits, then saves."""
+    return _request(
+        "POST", "/workouts/draft", token=token, json=request, timeout=AI_TIMEOUT
     )
 
 

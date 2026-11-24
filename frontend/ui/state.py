@@ -5,11 +5,10 @@ import streamlit as st
 PLAN_PAGES = {"plan", "detail", "edit"}
 SECTIONS = {
     "home": "dashboard",
-    "coach": "coach",
     "activities": "activities",
     "analytics": "analytics",
     "plans": "plans",
-    "create": "plans",
+    "create": "create",
     "plan": "plans",
     "detail": "plans",
     "edit": "plans",
@@ -43,6 +42,8 @@ def go(page: str, *, workout_id: int | None = None) -> None:
 
 def restore_page_from_url() -> None:
     page = st.query_params.get("fp_view")
+    if page == "coach":  # the old AI Coach page now lives inside Create
+        page = "create"
     if page not in SECTIONS:
         page = "home"
     workout_id = st.query_params.get("fp_workout")

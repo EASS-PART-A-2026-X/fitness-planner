@@ -148,15 +148,15 @@ def test_create_train_and_delete_a_plan(stack, signed_in):
     page, token = signed_in
     title = f"Browser plan {uuid.uuid4().hex[:6]}"
 
-    page.get_by_role("button", name="Build it yourself").click()
+    page.get_by_role("button", name="Create your first plan").click()
+    page.get_by_role("button", name="Choose Lower body").click()
+    expect(page.get_by_text("step 2 of 2")).to_be_visible()
     page.get_by_label("Workout name").fill(title)
     page.get_by_label("Goal").fill("Build strength")
-    page.get_by_label("Experience level").fill("beginner")
     page.get_by_label("Exercise name").fill("Squats")
-    page.get_by_label("Sets").fill("2")
-    page.get_by_role("textbox", name="Reps per set").fill("12, 12")
-    page.get_by_label("Rest (seconds)").fill("0")
-    page.get_by_role("button", name="Create workout").last.click()
+    page.get_by_label("Sets", exact=True).fill("2")
+    page.get_by_label("Reps", exact=True).fill("12")
+    page.get_by_role("button", name="Create plan").last.click()
     expect(page.get_by_text(f"Created {title}")).to_be_visible()
 
     page.reload()
@@ -170,39 +170,45 @@ def test_create_train_and_delete_a_plan(stack, signed_in):
     reps.fill("9")
     reps.press("Enter")
     page.get_by_role("button", name="Complete set").click()
+    page.get_by_role("button", name="Skip rest").click()
     expect(page.get_by_text("Set 2 of 2")).to_be_visible()
     page.get_by_role("button", name="Complete set").click()
     expect(page.get_by_text("Squats complete.")).to_be_visible()
     page.get_by_role("button", name="Finish workout").click()
-    expect(page.get_by_text("Workout complete!")).to_be_visible()
+    # The big celebration overlay plays alongside the success notice.
+    expect(page.locator(".fp-cel-title")).to_have_text("Workout complete!")
+    expect(page.get_by_text("Workout complete!").last).to_be_visible()
 
     done = api(stack["backend"], "/workouts/recent-completions", token=token)[0]
     assert done["checked_exercises"] == [
-        {"name": "Squats", "sets": 2, "reps": "9, 12", "rest_seconds": 0}
+        {"name": "Squats", "sets": 2, "reps": "9, 12", "rest_seconds": 60}
     ]
 
     page.get_by_role("button", name="Plans", exact=True).click()
     expect(page.get_by_text("Training plans", exact=True)).to_be_visible()
-    page.get_by_role("button", name="View").click()
-    page.get_by_role("button", name="Edit plan").click()
-    page.get_by_role("button", name="Delete", exact=True).click()
-    page.get_by_role("button", name="Yes, delete workout").click()
+    page.locator('[class*="st-key-fp-trash-"] button').first.click()
+    dialog = page.get_by_role("dialog")
+    expect(dialog.get_by_text("can't be undone")).to_be_visible()
+    dialog.get_by_role("button", name="Delete plan").click()
     expect(page.get_by_text(f"Deleted {title}")).to_be_visible()
     assert api(stack["backend"], "/workouts", token=token) == []
 
 
-def test_ai_coach_drafts_and_saves_a_plan(stack, signed_in):
+def test_ai_fills_exercises_then_the_plan_is_saved(stack, signed_in):
     page, token = signed_in
 
-    page.get_by_role("button", name="AI Coach").first.click()
+    page.get_by_role("button", name="Create", exact=False).first.click()
+    page.get_by_role("button", name="Choose Running").click()
+    expect(page.get_by_text("step 2 of 2")).to_be_visible()
     page.get_by_label("Goal").fill("Run a 5k")
-    page.get_by_role("button", name="Generate my plan").click()
+    page.get_by_role("button", name="Generate exercises").click()
 
-    expect(page.get_by_text("Saved to your plans")).to_be_visible(timeout=20000)
-    expect(page.get_by_text("Coach", exact=True)).to_be_visible()
+    expect(page.get_by_text("Coach", exact=True)).to_be_visible(timeout=20000)
+    assert api(stack["backend"], "/workouts", token=token) == []
+
+    page.get_by_role("button", name="Create plan").last.click()
+    expect(page.get_by_text("Created Running")).to_be_visible()
     plans = api(stack["backend"], "/workouts", token=token)
     assert len(plans) == 1
     assert plans[0]["goal"] == "Run a 5k"
-
-    page.get_by_role("button", name="Open plan").click()
-    expect(page.get_by_text("Planned exercises")).to_be_visible()
+    assert plans[0]["emoji"] == "running"

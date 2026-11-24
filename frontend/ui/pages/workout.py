@@ -195,7 +195,7 @@ def render(token: str, workout_id: int) -> None:
                 else:
                     _clear_timer(prefix)
                     st.session_state.pop(selected_key, None)
-                    st.session_state["celebrate"] = True
+                    st.session_state["celebrate"] = workout["title"]
                     set_page_state("home")
                     notify(
                         f"Workout complete! {plain(workout['title'])} "

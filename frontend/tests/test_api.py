@@ -223,6 +223,35 @@ def test_generate_plan_posts_request_with_long_timeout(backend):
     assert request.extensions["timeout"]["connect"] == 2.0
 
 
+def test_draft_plan_posts_request_with_long_timeout(backend):
+    draft = {
+        "title": "Run",
+        "icon": "running",
+        "exercises": WORKOUT["exercises"],
+        "coach_notes": "Easy pace.",
+    }
+    route = backend.post("/workouts/draft").mock(
+        return_value=httpx.Response(200, json=draft)
+    )
+
+    assert api.draft_plan(TOKEN, PLAN_REQUEST) == draft
+    request = route.calls.last.request
+    assert json.loads(request.content) == PLAN_REQUEST
+    assert request.extensions["timeout"]["read"] == 100.0
+
+
+@pytest.mark.parametrize(
+    ("code", "error"), [(503, api.AIUnavailable), (502, api.AIBadOutput)]
+)
+def test_draft_plan_failures_are_typed(backend, code, error):
+    backend.post("/workouts/draft").mock(
+        return_value=httpx.Response(code, json={"detail": "x"})
+    )
+
+    with pytest.raises(error):
+        api.draft_plan(TOKEN, PLAN_REQUEST)
+
+
 def test_regenerate_exercises_targets_the_plan(backend):
     route = backend.post("/workouts/3/generate").mock(
         return_value=httpx.Response(200, json=WORKOUT | {"coach_notes": ""})
