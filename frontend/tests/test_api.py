@@ -202,10 +202,9 @@ def test_recent_completions_returns_checked_exercise_history(backend):
 PLAN_REQUEST = {
     "goal": "Build strength",
     "experience_level": "beginner",
-    "equipment": ["dumbbells"],
-    "days_per_week": 3,
+    "frequency_per_week": 3,
     "minutes_per_session": 45,
-    "notes": "",
+    "equipment": ["dumbbells"],
 }
 
 
@@ -229,13 +228,15 @@ def test_regenerate_exercises_targets_the_plan(backend):
         return_value=httpx.Response(200, json=WORKOUT | {"coach_notes": ""})
     )
 
-    api.regenerate_exercises(TOKEN, 3, ["bands"], 20, "sore knee")
+    api.regenerate_exercises(TOKEN, 3, 20, ["bands"], "sore knee")
+    api.regenerate_exercises(TOKEN, 3, 45)
 
-    assert json.loads(route.calls.last.request.content) == {
-        "equipment": ["bands"],
+    assert json.loads(route.calls[0].request.content) == {
         "minutes_per_session": 20,
+        "equipment": ["bands"],
         "notes": "sore knee",
     }
+    assert json.loads(route.calls[1].request.content) == {"minutes_per_session": 45}
 
 
 @pytest.mark.parametrize(

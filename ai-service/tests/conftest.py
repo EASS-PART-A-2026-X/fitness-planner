@@ -25,7 +25,7 @@ def plan_request() -> dict:
     return {
         "goal": "Build strength",
         "experience_level": "beginner",
-        "equipment": ["dumbbells"],
-        "days_per_week": 3,
+        "frequency_per_week": 3,
         "minutes_per_session": 45,
+        "equipment": ["dumbbells"],
     }

@@ -329,11 +329,11 @@ def open_coach(backend) -> AppTest:
     at.button(key="top-nav-coach").click().run()
     at.text_input(key="coach-goal").input("Build strength")
     at.multiselect(key="coach-equipment").select("dumbbells")
-    at.text_area(key="coach-notes").input("Short sessions")
+    at.text_input(key="coach-notes").input("Short sessions")
     return at
 
 
-def test_coach_sends_the_request_and_shows_the_saved_plan(backend):
+def test_coach_sends_a_small_request_and_shows_the_saved_plan(backend):
     route = backend.post("/workouts/generate").mock(
         return_value=httpx.Response(201, json=GENERATED)
     )
@@ -344,9 +344,9 @@ def test_coach_sends_the_request_and_shows_the_saved_plan(backend):
     assert json.loads(route.calls[0].request.content) == {
         "goal": "Build strength",
         "experience_level": "beginner",
-        "equipment": ["bodyweight", "dumbbells"],
-        "days_per_week": 3,
+        "frequency_per_week": 3,
         "minutes_per_session": 45,
+        "equipment": ["dumbbells"],
         "notes": "Short sessions",
     }
     text = markdown_text(at)
@@ -354,6 +354,50 @@ def test_coach_sends_the_request_and_shows_the_saved_plan(backend):
     assert "Add a rep each week." in text
     assert "Goblet squat" in text
     assert at.button(key="coach-open")
+
+
+def test_backup_plan_shows_a_friendly_notice(backend):
+    backend.post("/workouts/generate").mock(
+        return_value=httpx.Response(201, json=GENERATED | {"plan_source": "offline"})
+    )
+    at = open_coach(backend)
+
+    at.button(key="coach-submit").click().run()
+
+    assert "backup coach built this plan" in at.info[0].value
+    assert "Dumbbell strength" in markdown_text(at)
+    assert not at.error
+
+
+def test_ai_plan_shows_no_backup_notice(backend):
+    backend.post("/workouts/generate").mock(
+        return_value=httpx.Response(201, json=GENERATED | {"plan_source": "ai"})
+    )
+    at = open_coach(backend)
+
+    at.button(key="coach-submit").click().run()
+
+    assert not any("backup coach" in item.value for item in at.info)
+
+
+def test_coach_needs_only_a_goal(backend):
+    route = backend.post("/workouts/generate").mock(
+        return_value=httpx.Response(201, json=GENERATED)
+    )
+    at = start_app(backend, [WORKOUT])
+    at.button(key="top-nav-coach").click().run()
+    at.text_input(key="coach-name").input("Leg day")
+    at.text_input(key="coach-goal").input("Stronger legs")
+
+    at.button(key="coach-submit").click().run()
+
+    assert json.loads(route.calls[0].request.content) == {
+        "plan_name": "Leg day",
+        "goal": "Stronger legs",
+        "experience_level": "beginner",
+        "frequency_per_week": 3,
+        "minutes_per_session": 45,
+    }
 
 
 @pytest.mark.parametrize(
@@ -370,7 +414,7 @@ def test_coach_failures_show_a_sentence_and_keep_input(backend, status, message)
 
     assert message in at.error[0].value
     assert at.text_input(key="coach-goal").value == "Build strength"
-    assert at.text_area(key="coach-notes").value == "Short sessions"
+    assert at.text_input(key="coach-notes").value == "Short sessions"
     assert not at.exception
 
 
@@ -397,11 +441,7 @@ def test_plan_page_regenerates_exercises_with_ai(backend):
 
     at.button(key="plan-7-generate-exercises").click().run()
 
-    assert json.loads(route.calls[0].request.content) == {
-        "equipment": ["bodyweight"],
-        "minutes_per_session": 45,
-        "notes": "",
-    }
+    assert json.loads(route.calls[0].request.content) == {"minutes_per_session": 45}
     assert any("Updated Full Body" in item.value for item in at.success)
 
 

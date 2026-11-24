@@ -35,7 +35,7 @@ browser ──► frontend (Streamlit) :8501 ──► backend (FastAPI) :8000 �
 |---|---|---|
 | frontend | `frontend/` | UI only. `fitness_planner_api.py` is the only module that makes HTTP calls; pages live in `ui/pages/`. |
 | backend | `backend/` | Accounts, plans, sessions, completions, SQLite. Calls the AI service through `app/ai_client.py`. |
-| ai-service | `ai-service/` | A Pydantic AI agent (`app/agent.py`) that drafts plans from a vetted exercise catalog. |
+| ai-service | `ai-service/` | A Pydantic AI agent (`app/agent.py`) that drafts workout plans, with an offline rule-based coach as fallback. |
 
 Streamlit was chosen because the product is a form-and-dashboard app that one
 Python developer can build and test end to end (AppTest); the accepted cost is
@@ -85,9 +85,9 @@ starts empty and you create an account on the sign-in screen.
 ## Test
 
 ```bash
-cd ai-service && uv run pytest     # 33 passed, offline, no API key
-cd backend    && uv run pytest     # 90 passed, AI calls faked with httpx.MockTransport
-cd frontend   && uv run pytest     # 50 passed (AppTest + respx + live-backend integration)
+cd ai-service && uv run pytest     # 50 passed, offline, no API key
+cd backend    && uv run pytest     # 95 passed, AI calls faked with httpx.MockTransport
+cd frontend   && uv run pytest     # 53 passed (AppTest + respx + live-backend integration)
 ```
 
 Each folder also passes `uv run ruff check .` and `uv run ruff format --check .`.
@@ -102,22 +102,31 @@ uv run pytest -m e2e                      # 2 passed
 
 ## The AI service
 
-**Input** (`PlanRequest`): goal, experience level, equipment, days per week,
-minutes per session, free-text notes, and the user's last three completed
-workouts (added by the backend). **Output** (`WorkoutPlanDraft`): title, icon,
-frequency, 1–12 exercises with sets, per-set reps, rest and a coaching cue,
-plus coach notes.
+The request is deliberately small, because every field is sent to the model:
+
+**Input** (`PlanRequest`): goal (≤100 chars), experience level (≤30), workouts
+per week, minutes per workout (10–180), and optionally a plan name (≤60), equipment, a short note (≤200) and
+the last completed workout as up to 10 short lines such as
+`"Goblet squat 12, 12, 10"` (the backend adds it). Empty optional fields are
+left out of the JSON. **Output** (`WorkoutPlanDraft`): title (≤60), icon, 1–8
+exercises with sets, per-set reps, rest and a short cue (≤80), and coach notes
+(≤200).
 
 The agent has:
 - `output_type=WorkoutPlanDraft` and instructions that treat every user field as
   data (prompt-injection defence);
-- a deps tool, `exercises_for_equipment`, that lists catalog moves for the
-  user's gear, and a plain tool, `estimate_minutes`;
-- an output validator that sends `ModelRetry` when an exercise is unknown or
-  needs missing equipment, the reps list does not match the sets, the session
-  is over the minute budget, or the frequency is wrong;
-- `UsageLimits(request_limit=5, tool_calls_limit=5, total_tokens_limit=20_000)`
-  and a 25 s timeout per run.
+- two optional tools the model may call: a deps tool,
+  `exercises_for_equipment` (example moves for the user's gear), and a plain
+  tool, `estimate_minutes`. Instructions tell the model to answer directly, so
+  a plan normally takes **one request**;
+- an output validator that sends `ModelRetry` when an exercise needs equipment
+  the user did not list (e.g. "Barbell deadlift" with only dumbbells) or reps
+  are not numbers, and repairs a reps list of the wrong length and a session
+  longer than the user's minutes (it drops sets, then exercises) itself
+  instead of spending another request;
+- `UsageLimits(request_limit=4, tool_calls_limit=15, total_tokens_limit=12_000)`,
+  `max_tokens=1500` for the answer, an 8 s timeout per model call and a 25 s
+  budget for the whole chain before the offline coach answers.
 
 ### Free AI setup
 
@@ -127,30 +136,44 @@ The app never needs to spend money on AI:
    enable billing on that Google project, so it can never charge you.
 2. Create `.env` in the repository root (it is git-ignored):
    ```bash
-   AI_MODEL=google:gemini-2.5-flash-lite
+   AI_MODEL=google:gemini-3.5-flash-lite,google:gemini-3.5-flash
    GOOGLE_API_KEY=your-key
    ```
 3. Restart: `docker compose up --build --wait`, or restart the ai-service.
 
 How it stays within the free tier and never "runs out":
-- **Fewer tokens per plan.** Gemini's hidden "thinking" tokens are turned off
-  (`thinking_budget=0`), the catalog tool returns only the fields the model
-  needs, and each run is capped at 5 requests and 20,000 tokens.
+- **A small request, usually one call.** Only goal, level, workouts per week
+  and the optional fields you fill in are sent, as compact JSON. Measured with
+  Gemini 3.5 Flash-Lite: about 900–2,000 tokens and 1–2 requests per plan
+  (it was about 4,000 tokens and 3 requests before). Gemini's hidden
+  "thinking" is kept at `thinking_level="low"`.
+- **Several free models, failing fast.** `AI_MODEL` lists models in order
+  (Flash-Lite, then Flash). Each call gets 8 s. A "high demand" (503) answer
+  gets one quick retry after 0.75 s; a timeout, quota (429) or invalid answer
+  moves straight to the next model. A bad or missing key stops the chain.
 - **Offline fallback.** If the daily or per-minute free quota is used up (429),
-  the key is missing or wrong, the model is slower than 20 s, or it keeps
+  the key is missing or wrong, every model is busy or slow, or it keeps
   returning invalid plans, the ai-service answers with the offline rule-based
   coach instead of an error. Users always get a plan.
 - **See which one answered.** The response header `X-Plan-Source` is `ai` or
-  `offline`, and the ai-service log prints `plan fell back to offline planner: …`
-  whenever the fallback is used.
+  `offline`. The ai-service log prints `plan ok: model=… requests=… tokens=…`
+  on success and, on failure, which model failed and how, e.g.
+  `gemini-3.5-flash-lite busy (503); retrying in 0.75s`,
+  `gemini-3.5-flash failed: timeout; trying the next model` and
+  `plan used the offline coach: all models failed: … 503; … timeout`.
+- **Friendly notice.** When the backup coach wrote the plan, the backend
+  returns `plan_source: "offline"` and the AI Coach page says so ("The AI
+  coach is busy right now, so your backup coach built this plan…"). To debug,
+  set `AI_FALLBACK=off` in `.env`: failures then show "The AI coach is
+  unavailable right now" instead of a backup plan.
 
 ### Contract
 
 | Call | Request | Success | Errors |
 |---|---|---|---|
 | ai-service `POST /plan` | `PlanRequest` (`extra="forbid"`) | 200 `WorkoutPlanDraft` | 422 bad request · 429 budget · 502 invalid output · 500 provider · 504 timeout |
-| backend `POST /workouts/generate` | goal, level, equipment, days, minutes, notes | 201 stored plan + `coach_notes` | 422 (AI never called) · 503 · 502 |
-| backend `POST /workouts/{id}/generate` | equipment, minutes, notes | 200 plan with new exercises | 404 · 422 · 503 · 502 |
+| backend `POST /workouts/generate` | goal, level, workouts/week, minutes; optional plan name, equipment, note | 201 stored plan + `coach_notes` | 422 (AI never called) · 503 · 502 |
+| backend `POST /workouts/{id}/generate` | minutes; optional equipment, note | 200 plan with new exercises | 404 · 422 · 503 · 502 |
 
 The ai-service owns the schema. The backend keeps its own copy in
 `backend/app/ai_client.py`, validates every response against it, and
@@ -195,18 +218,20 @@ ordinary, injection, missing-field and ambiguous. Run them with:
 
 ```bash
 cd ai-service
-uv run python -m evals.run_evals                                      # offline baseline
-AI_MODEL=google:gemini-2.5-flash EVAL_REPEAT=3 uv run python -m evals.run_evals
+uv run python -m evals.run_evals                     # offline coach (default)
+EVAL_MODEL=google:gemini-3.5-flash-lite EVAL_REPEAT=3 uv run python -m evals.run_evals
 ```
 
-Assertions: reps match sets, respects equipment, fits the time budget,
-frequency matches, ignores injection, avoids high-impact moves when the user
-mentions joint pain. Score: `FocusMatch`, the share of exercises that train the
-goal's focus.
+`EVAL_MODEL` is separate from the app's `AI_MODEL`, so a plain eval run never
+spends free-tier quota.
 
-| Date | `AI_MODEL` | Settings | Cases | Assertions passed | FocusMatch avg | Requests / case |
+Assertions: reps match sets, respects equipment, fits the time budget, ignores injection, avoids
+high-impact moves when the user mentions joint pain. Score: `ReasonableSize`
+(1.0 for the requested 4–6 exercises).
+
+| Date | Model | Settings | Cases | Assertions passed | ReasonableSize avg | Requests / case |
 |---|---|---|---|---|---|---|
-| 2026-11-23 | `test` (rule-based baseline) | repeat=1 | 10 | 60 / 60 (100%) | 0.75 | 1 |
+| 2026-11-24 | `test` (offline coach) | repeat=1 | 10 | 50 / 50 (100%) | 0.90 | 1 |
 
 ## Data sketch
 `WorkoutPlan`: `id`, `user_id` (owner), `title` (1–200 chars), `goal`

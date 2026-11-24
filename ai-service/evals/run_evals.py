@@ -1,7 +1,10 @@
 """Run the AI coach against the hand-written cases.
 
-uv run python -m evals.run_evals            # offline baseline (AI_MODEL unset)
-AI_MODEL=google:gemini-2.5-flash EVAL_REPEAT=3 uv run python -m evals.run_evals
+uv run python -m evals.run_evals                 # offline coach (default)
+EVAL_MODEL=google:gemini-3.5-flash-lite EVAL_REPEAT=3 uv run python -m evals.run_evals
+
+EVAL_MODEL is separate from AI_MODEL on purpose, so the app's .env never makes
+a plain eval run spend free-tier quota.
 """
 
 import os
@@ -13,18 +16,23 @@ from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
 
 from app import catalog
-from app.agent import Deps, plan_agent, usage_limits
+from app.agent import (
+    Deps,
+    missing_equipment,
+    model_settings_for,
+    plan_agent,
+    resolve_model,
+    usage_limits,
+)
+
+EVAL_MODEL = os.getenv("EVAL_MODEL", "test")
 from app.schemas import PlanRequest, WorkoutPlanDraft
 
 CASES = Path(__file__).with_name("cases.yaml")
 Ctx = EvaluatorContext[PlanRequest, WorkoutPlanDraft, dict]
 
 
-def _entries(ctx: Ctx) -> list[catalog.CatalogEntry | None]:
-    return [
-        catalog.CATALOG_BY_NAME.get(exercise.name.casefold())
-        for exercise in ctx.output.exercises
-    ]
+IMPACT_WORDS = ("burpee", "jump", "jacks", "mountain climber", "sprint")
 
 
 @dataclass
@@ -40,27 +48,20 @@ class RepsMatchSets(Evaluator):
 @dataclass
 class RespectsEquipment(Evaluator):
     def evaluate(self, ctx: Ctx) -> bool:
-        allowed = set(catalog.available_exercises(frozenset(ctx.inputs.equipment)))
-        return all(entry in allowed for entry in _entries(ctx))
+        owned = frozenset(ctx.inputs.equipment) or frozenset({"bodyweight"})
+        return not any(
+            missing_equipment(exercise.name, owned) for exercise in ctx.output.exercises
+        )
 
 
 @dataclass
 class FitsTimeBudget(Evaluator):
     def evaluate(self, ctx: Ctx) -> bool:
-        total = float(catalog.WARM_UP_MINUTES)
-        for exercise, entry in zip(ctx.output.exercises, _entries(ctx)):
-            reps = catalog.parse_reps(exercise.reps) or []
-            spr = entry.seconds_per_rep if entry else 3
-            total += catalog.estimate_minutes(
-                exercise.sets, reps, exercise.rest_seconds, spr
-            )
-        return total <= ctx.inputs.minutes_per_session
-
-
-@dataclass
-class FrequencyMatches(Evaluator):
-    def evaluate(self, ctx: Ctx) -> bool:
-        return ctx.output.frequency_per_week == ctx.inputs.days_per_week
+        rows = [
+            (e.name, catalog.parse_reps(e.reps) or [], e.rest_seconds)
+            for e in ctx.output.exercises
+        ]
+        return catalog.session_minutes(rows) <= ctx.inputs.minutes_per_session
 
 
 @dataclass
@@ -76,31 +77,29 @@ class AvoidsHighImpact(Evaluator):
     def evaluate(self, ctx: Ctx) -> bool:
         if not (ctx.metadata or {}).get("avoid_impact"):
             return True
-        return not any(entry and entry.high_impact for entry in _entries(ctx))
+        return not any(
+            word in exercise.name.casefold()
+            for exercise in ctx.output.exercises
+            for word in IMPACT_WORDS
+        )
 
 
 @dataclass
-class FocusMatch(Evaluator):
-    """Score: share of exercises that train the expected focus."""
+class ReasonableSize(Evaluator):
+    """Score: 1.0 for the requested 4-6 exercises, 0.5 just outside, else 0."""
 
     def evaluate(self, ctx: Ctx) -> float:
-        focus = (ctx.metadata or {}).get("focus")
-        entries = _entries(ctx)
-        if not focus or not entries:
-            return 1.0
-        return round(
-            sum(1 for e in entries if e and e.focus == focus) / len(entries), 2
-        )
+        count = len(ctx.output.exercises)
+        return 1.0 if 4 <= count <= 6 else 0.5 if count in (3, 7) else 0.0
 
 
 EVALUATORS = (
     RepsMatchSets(),
     RespectsEquipment(),
     FitsTimeBudget(),
-    FrequencyMatches(),
     IgnoresInjection(),
     AvoidsHighImpact(),
-    FocusMatch(),
+    ReasonableSize(),
 )
 
 
@@ -113,21 +112,23 @@ def load_dataset() -> Dataset[PlanRequest, WorkoutPlanDraft, dict]:
 
 async def plan_task(request: PlanRequest) -> WorkoutPlanDraft:
     result = await plan_agent.run(
-        request.model_dump_json(),
+        request.prompt(),
         deps=Deps.from_request(request),
         usage_limits=usage_limits(),
+        model_settings=model_settings_for(EVAL_MODEL),
     )
     return result.output
 
 
 def run(repeat: int = 1, progress: bool = True) -> EvaluationReport:
-    return load_dataset().evaluate_sync(
-        plan_task,
-        name=os.getenv("AI_MODEL", "test"),
-        max_concurrency=2,
-        repeat=repeat,
-        progress=progress,
-    )
+    with plan_agent.override(model=resolve_model(EVAL_MODEL)):
+        return load_dataset().evaluate_sync(
+            plan_task,
+            name=EVAL_MODEL,
+            max_concurrency=1,  # free tiers limit requests per minute
+            repeat=repeat,
+            progress=progress,
+        )
 
 
 if __name__ == "__main__":

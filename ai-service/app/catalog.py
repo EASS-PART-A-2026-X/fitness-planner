@@ -111,3 +111,29 @@ def goal_focus(goal: str) -> Focus | None:
         if any(word in text for word in words):
             return focus
     return None
+
+
+def seconds_per_rep_for(name: str) -> int:
+    """Catalog value when known; otherwise guessed from the name.
+
+    The model may invent names ("Wall sit", "Easy jog (minutes)"), so timed
+    moves are recognised by their wording: reps then mean seconds or minutes.
+    """
+    entry = CATALOG_BY_NAME.get(name.casefold().strip())
+    if entry is not None:
+        return entry.seconds_per_rep
+    lowered = name.casefold()
+    if "minute" in lowered:
+        return 60
+    if any(word in lowered for word in ("lap", "length")):
+        return 45
+    timed = ("second", "hold", "plank", "wall sit", "interval", "sprint", "hang")
+    return 1 if any(word in lowered for word in timed) else 3
+
+
+def session_minutes(exercises: list[tuple[str, list[int], int]]) -> float:
+    """Warm-up plus every (name, reps per set, rest seconds) exercise."""
+    return WARM_UP_MINUTES + sum(
+        estimate_minutes(len(reps), reps, rest, seconds_per_rep_for(name))
+        for name, reps, rest in exercises
+    )

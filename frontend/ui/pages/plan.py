@@ -40,31 +40,37 @@ def plan_heading(workout: api.WorkoutPlan, eyebrow: str) -> None:
 def ai_refresh(token: str, workout_id: int) -> None:
     with st.expander("✦ Refresh exercises with AI"):
         st.caption(
-            "The coach rebuilds the exercise list for this plan using your goal, "
-            "your recent sessions and the gear below."
+            "The coach rebuilds this plan's exercises from its goal and your last "
+            "session with it."
         )
         equipment = st.multiselect(
-            "Equipment you have",
+            "Equipment (optional, bodyweight if empty)",
             api.EQUIPMENT,
-            default=["bodyweight"],
             format_func=EQUIPMENT_LABELS.get,
             key=f"plan-{workout_id}-equipment",
         )
         minutes = st.slider(
-            "Minutes per session", 10, 120, 45, step=5, key=f"plan-{workout_id}-minutes"
+            "Minutes per workout",
+            10,
+            120,
+            45,
+            step=5,
+            key=f"plan-{workout_id}-minutes",
+        )
+        notes = st.text_input(
+            "Short note for the coach (optional)",
+            max_chars=200,
+            key=f"plan-{workout_id}-notes",
         )
         if st.button(
             "Generate exercises with AI",
             key=f"plan-{workout_id}-generate-exercises",
             width="stretch",
         ):
-            if not equipment:
-                st.warning("Please fix: pick at least one kind of equipment.")
-                return
             try:
                 with st.spinner("Your coach is rebuilding this plan..."):
                     updated = api.regenerate_exercises(
-                        token, workout_id, equipment, minutes
+                        token, workout_id, minutes, equipment, notes.strip()
                     )
             except api.BackendError as exc:
                 st.error(str(exc))
@@ -72,7 +78,15 @@ def ai_refresh(token: str, workout_id: int) -> None:
             st.session_state[f"plan-{workout_id}-coach-notes"] = updated.get(
                 "coach_notes", ""
             )
-            notify(f"Updated {plain(updated['title'])} with new exercises.")
+            backup = updated.get("plan_source") == "offline"
+            notify(
+                f"Updated {plain(updated['title'])} with new exercises"
+                + (
+                    " from the backup coach (the AI coach is busy right now)."
+                    if backup
+                    else "."
+                )
+            )
 
 
 def render(token: str, workout_id: int) -> None:

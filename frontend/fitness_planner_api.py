@@ -87,16 +87,19 @@ class RecentWorkout(TypedDict):
 
 
 class PlanRequest(TypedDict):
+    plan_name: NotRequired[str]
     goal: str
     experience_level: str
-    equipment: list[str]
-    days_per_week: int
+    frequency_per_week: int
     minutes_per_session: int
-    notes: str
+    equipment: NotRequired[list[str]]
+    notes: NotRequired[str]
 
 
 class GeneratedWorkout(WorkoutPlan):
     coach_notes: str
+    # "offline" when the AI was busy and the local backup coach wrote the plan.
+    plan_source: NotRequired[str]
 
 
 class User(TypedDict):
@@ -337,20 +340,21 @@ def generate_plan(token: str, request: PlanRequest) -> GeneratedWorkout:
 def regenerate_exercises(
     token: str,
     workout_id: int,
-    equipment: list[str],
     minutes_per_session: int,
+    equipment: list[str] | None = None,
     notes: str = "",
 ) -> GeneratedWorkout:
     """Replace an existing plan's exercises with a fresh AI suggestion."""
+    body: dict = {"minutes_per_session": minutes_per_session}
+    if equipment:
+        body["equipment"] = equipment
+    if notes:
+        body["notes"] = notes
     return _request(
         "POST",
         f"/workouts/{workout_id}/generate",
         token=token,
-        json={
-            "equipment": equipment,
-            "minutes_per_session": minutes_per_session,
-            "notes": notes,
-        },
+        json=body,
         timeout=AI_TIMEOUT,
     )
 

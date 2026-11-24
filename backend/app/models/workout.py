@@ -189,20 +189,26 @@ Equipment = Literal[
 
 
 class RegenerateExercisesRequest(SQLModel):
-    """What the AI coach needs on top of an existing plan's details."""
+    """What the AI coach needs on top of an existing plan's details.
+
+    Kept small on purpose: everything here is sent to the model.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    equipment: list[Equipment] = Field(min_length=1, max_length=8)
     minutes_per_session: int = Field(ge=10, le=180)
-    notes: str = Field(default="", max_length=500)
+    equipment: list[Equipment] = Field(default_factory=list, max_length=8)
+    notes: str = Field(default="", max_length=200)
 
 
 class GeneratePlanRequest(RegenerateExercisesRequest):
+    plan_name: str = Field(default="", max_length=60)
     goal: str = Field(min_length=1, max_length=100)
-    experience_level: str = Field(min_length=1, max_length=50)
-    days_per_week: int = Field(ge=1, le=7)
+    experience_level: str = Field(min_length=1, max_length=30)
+    frequency_per_week: int = Field(ge=1, le=7)
 
 
 class GeneratedWorkoutPublic(WorkoutPlanPublic):
     coach_notes: str = ""
+    # "ai", or "offline" when the AI was busy and the local backup coach answered.
+    plan_source: Literal["ai", "offline"] = "ai"

@@ -42,8 +42,7 @@ def backend_schema(model: type[BaseModel]) -> tuple[dict, dict]:
     "model",
     [
         ai_client.PlanRequest,
-        ai_client.HistoryItem,
-        ai_client.PerformedExercise,
+        ai_client.LastWorkout,
         ai_client.WorkoutPlanDraft,
         ai_client.PlannedExercise,
     ],

@@ -2,7 +2,7 @@
 
 Partitions:
 - user input: valid | empty goal | whitespace goal | unknown field |
-  unknown equipment | minutes out of range  -> 422 with zero AI calls
+  unknown equipment | frequency/minutes out of range | long notes  -> 422, zero AI calls
 - AI transport: answers | connection refused | read timeout (retried)
 - AI status: 200 | 503/504 (retried) | 500 / 429 (no retry) -> 503 |
   502 / other 4xx -> 502
@@ -21,15 +21,14 @@ from app.ai_client import TIMEOUT
 BODY = {
     "goal": "Build strength",
     "experience_level": "beginner",
-    "equipment": ["dumbbells"],
-    "days_per_week": 3,
+    "frequency_per_week": 3,
     "minutes_per_session": 45,
+    "equipment": ["dumbbells"],
     "notes": "Short sessions please",
 }
 DRAFT = {
     "title": "Dumbbell strength",
     "icon": "weights",
-    "frequency_per_week": 3,
     "exercises": [
         {
             "name": "Goblet squat",
@@ -73,11 +72,26 @@ def test_generate_stores_the_plan_and_returns_coach_notes(
     assert "notes" not in created["exercises"][1]
     stored = authenticated_client.get(f"/workouts/{created['id']}").json()
     assert stored["exercises"] == created["exercises"]
-    sent = json.loads(calls[0].content)
-    assert sent == BODY | {"plan_name": "", "recent_history": []}
+    # Only non-empty fields are sent, to keep the AI request small.
+    assert json.loads(calls[0].content) == BODY
 
 
-def test_generate_sends_recent_history_to_the_ai(authenticated_client, fake_ai):
+def test_minimal_request_and_plan_name_becomes_the_title(authenticated_client, fake_ai):
+    calls = fake_ai(answer())
+    body = {"plan_name": "Leg day", "goal": "Legs", "experience_level": "beginner"}
+
+    response = authenticated_client.post(
+        "/workouts/generate",
+        json=body | {"frequency_per_week": 2, "minutes_per_session": 30},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["title"] == "Leg day"
+    assert response.json()["frequency_per_week"] == 2
+    assert "equipment" not in json.loads(calls[0].content)
+
+
+def test_generate_sends_the_last_workout_to_the_ai(authenticated_client, fake_ai):
     workout = authenticated_client.post(
         "/workouts",
         json={"title": "Old", "exercises": [{"exercise": "Squats", "count": 12}]},
@@ -87,9 +101,10 @@ def test_generate_sends_recent_history_to_the_ai(authenticated_client, fake_ai):
 
     authenticated_client.post("/workouts/generate", json=BODY)
 
-    history = json.loads(calls[0].content)["recent_history"]
-    assert history[0]["workout_name"] == "Old"
-    assert history[0]["exercises"] == [{"name": "Squats", "reps": "12"}]
+    assert json.loads(calls[0].content)["last_workout"] == {
+        "name": "Old",
+        "exercises": ["Squats 12"],
+    }
 
 
 @pytest.mark.parametrize(
@@ -99,8 +114,9 @@ def test_generate_sends_recent_history_to_the_ai(authenticated_client, fake_ai):
         {"goal": "   "},
         {"golf": "typo"},
         {"equipment": ["spaceship"]},
-        {"equipment": []},
+        {"frequency_per_week": 0},
         {"minutes_per_session": 5},
+        {"notes": "x" * 201},
     ],
 )
 def test_invalid_input_never_calls_the_ai(authenticated_client, fake_ai, change):
@@ -211,7 +227,8 @@ def test_regenerate_replaces_exercises_of_own_plan(authenticated_client, fake_ai
     assert response.json()["exercises"][0]["name"] == "Goblet squat"
     sent = json.loads(calls[0].content)
     assert sent["plan_name"] == "Mine"
-    assert sent["days_per_week"] == 3
+    assert sent["frequency_per_week"] == 3
+    assert sent["minutes_per_session"] == 40
 
 
 def test_regenerate_unknown_plan_is_404_without_ai_call(authenticated_client, fake_ai):
@@ -219,7 +236,7 @@ def test_regenerate_unknown_plan_is_404_without_ai_call(authenticated_client, fa
 
     response = authenticated_client.post(
         "/workouts/999/generate",
-        json={"equipment": ["bodyweight"], "minutes_per_session": 30},
+        json={"minutes_per_session": 30},
     )
 
     assert response.status_code == 404
@@ -237,3 +254,24 @@ def test_client_has_explicit_timeouts():
         30.0,
         2.0,
     )
+
+
+def test_backup_plan_is_marked_offline(authenticated_client, fake_ai):
+    fake_ai(
+        lambda request: httpx.Response(
+            200, json=DRAFT, headers={"X-Plan-Source": "offline"}
+        )
+    )
+
+    response = authenticated_client.post("/workouts/generate", json=BODY)
+
+    assert response.status_code == 201
+    assert response.json()["plan_source"] == "offline"
+
+
+def test_ai_plan_is_marked_ai(authenticated_client, fake_ai):
+    fake_ai(answer())
+
+    response = authenticated_client.post("/workouts/generate", json=BODY)
+
+    assert response.json()["plan_source"] == "ai"

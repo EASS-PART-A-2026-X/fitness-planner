@@ -18,5 +18,5 @@ def test_baseline_passes_every_assertion():
     for case in report.cases:
         failed = [name for name, result in case.assertions.items() if not result.value]
         assert not failed, (case.name, failed)
-    focus = [case.scores["FocusMatch"].value for case in report.cases]
-    assert sum(focus) / len(focus) >= 0.6
+    size = [case.scores["ReasonableSize"].value for case in report.cases]
+    assert sum(size) / len(size) >= 0.8

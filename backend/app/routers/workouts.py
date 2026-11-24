@@ -13,7 +13,7 @@ from app.ai_client import (
     AIClientDep,
     AIServiceBadOutput,
     AIServiceUnavailable,
-    HistoryItem,
+    LastWorkout,
     PlanRequest,
     WorkoutPlanDraft,
 )
@@ -189,29 +189,28 @@ def read_workout_progress_history(
 # --- AI coach -------------------------------------------------------------
 
 
-def _history(session: Session, user_id: int) -> list[HistoryItem]:
-    items = []
-    for completion, name in services.recent_completions(session, user_id):
-        exercises = [
-            {
-                "name": exercise.get("name") or exercise.get("exercise", "Exercise"),
-                "reps": str(exercise.get("reps") or exercise.get("count", "")),
-            }
-            for exercise in completion.checked_exercises
-        ]
-        items.append(
-            HistoryItem.model_validate(
-                {
-                    "workout_name": name,
-                    "completed_on": completion.completed_on,
-                    "exercises": exercises,
-                }
-            )
-        )
-    return items
+def _last_workout(
+    session: Session, user_id: int, workout_id: int | None = None
+) -> LastWorkout | None:
+    """The most recent completed workout as short lines ("Squats 12, 12").
+
+    For a specific plan, its own last session is preferred.
+    """
+    recent = services.recent_completions(session, user_id)
+    if workout_id is not None:
+        recent = [r for r in recent if r[0].workout_id == workout_id] or recent
+    if not recent:
+        return None
+    completion, name = recent[0]
+    lines = []
+    for exercise in completion.checked_exercises[:10]:
+        label = exercise.get("name") or exercise.get("exercise", "Exercise")
+        reps = exercise.get("reps") or exercise.get("count", "")
+        lines.append(f"{label} {reps}".strip()[:80])
+    return LastWorkout(name=name[:120], exercises=lines)
 
 
-def _ask_ai(ai: AIClientDep, request: PlanRequest) -> WorkoutPlanDraft:
+def _ask_ai(ai: AIClientDep, request: PlanRequest) -> tuple[WorkoutPlanDraft, str]:
     """Call the AI before any database write, mapping failures to 503 / 502."""
     try:
         return ai.plan(request)
@@ -250,22 +249,22 @@ def generate_workout(
     current_user: auth.CurrentUser,
 ) -> GeneratedWorkoutPublic:
     request = PlanRequest.model_validate(
-        body.model_dump() | {"recent_history": _history(session, current_user.id)}
+        body.model_dump() | {"last_workout": _last_workout(session, current_user.id)}
     )
-    draft = _ask_ai(ai, request)
+    draft, source = _ask_ai(ai, request)
     plan = _validated_plan(
         {
-            "title": draft.title,
+            "title": body.plan_name or draft.title,
             "goal": body.goal,
             "experience_level": body.experience_level,
-            "frequency_per_week": draft.frequency_per_week,
+            "frequency_per_week": body.frequency_per_week,
             "emoji": draft.icon,
             "exercises": _exercises(draft),
         }
     )
     workout = create_workout(plan, session, current_user)
     return GeneratedWorkoutPublic.model_validate(
-        workout.model_dump() | {"coach_notes": draft.coach_notes}
+        workout.model_dump() | {"coach_notes": draft.coach_notes, "plan_source": source}
     )
 
 
@@ -285,14 +284,14 @@ def regenerate_exercises(
     request = PlanRequest.model_validate(
         body.model_dump()
         | {
+            "plan_name": workout.title[:60],
             "goal": workout.goal,
-            "experience_level": workout.experience_level,
-            "days_per_week": workout.frequency_per_week,
-            "plan_name": workout.title,
-            "recent_history": _history(session, current_user.id),
+            "experience_level": workout.experience_level[:30],
+            "frequency_per_week": workout.frequency_per_week,
+            "last_workout": _last_workout(session, current_user.id, workout_id),
         }
     )
-    draft = _ask_ai(ai, request)
+    draft, source = _ask_ai(ai, request)
     exercises = _validated_plan(
         {"title": workout.title, "exercises": _exercises(draft)}
     ).model_dump(mode="json", exclude_none=True)["exercises"]
@@ -300,7 +299,7 @@ def regenerate_exercises(
         workout_id, WorkoutPlanUpdate(exercises=exercises), session, current_user
     )
     return GeneratedWorkoutPublic.model_validate(
-        updated.model_dump() | {"coach_notes": draft.coach_notes}
+        updated.model_dump() | {"coach_notes": draft.coach_notes, "plan_source": source}
     )
 
 

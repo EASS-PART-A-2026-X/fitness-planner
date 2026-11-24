@@ -74,7 +74,12 @@ def stack(tmp_path_factory) -> Iterator[dict]:
     urls = {name: f"http://127.0.0.1:{port}" for name, port in ports.items()}
     db = tmp_path_factory.mktemp("e2e") / "e2e.db"
     processes = [
-        uv_server(ROOT / "ai-service", ports["ai"], {"PYDANTIC_AI_NO_BANNER": "1"}),
+        uv_server(
+            ROOT / "ai-service",
+            ports["ai"],
+            # Offline coach: e2e runs must not spend the .env's free-tier quota.
+            {"PYDANTIC_AI_NO_BANNER": "1", "AI_MODEL": "test"},
+        ),
         uv_server(
             ROOT / "backend",
             ports["backend"],
