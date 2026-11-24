@@ -19,6 +19,7 @@ from ui.components import (
     segments,
     workout_icon,
 )
+from ui.forms import pick
 from ui.state import go, notify
 
 
@@ -62,13 +63,14 @@ def ai_refresh(token: str, workout_id: int) -> None:
             format_func=EQUIPMENT_LABELS.get,
             key=f"plan-{workout_id}-equipment",
         )
-        minutes = st.segmented_control(
+        minutes = pick(
+            st,
             "Minutes per workout",
-            options=MINUTE_CHOICES,
+            MINUTE_CHOICES,
+            f"plan-{workout_id}-minutes",
+            DEFAULT_MINUTES,
             default=DEFAULT_MINUTES,
             format_func=lambda n: f"{n} min",
-            required=True,
-            key=f"plan-{workout_id}-minutes",
         )
         notes = st.text_input(
             "Short note for the coach (optional)",

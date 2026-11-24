@@ -14,6 +14,7 @@ from ui.exercises import structured_exercise
 
 MAX_EXERCISES = 100
 REST_CHOICES = (0, 30, 45, 60, 90, 120, 180)
+DEFAULT_REST = 60
 ROW_FIELDS = ("name", "sets", "reps", "vary", "replist", "rest", "notes")
 
 
@@ -44,6 +45,7 @@ def _seed_row(prefix: str, row: int, exercise: api.Exercise | None) -> None:
 def _forget_row(prefix: str, row: int) -> None:
     for field in ROW_FIELDS:
         st.session_state.pop(f"{prefix}-{field}-{row}", None)
+    st.session_state.pop(f"{prefix}-rest-{row}--last", None)
 
 
 def load_exercises(prefix: str, exercises: list[api.Exercise]) -> None:
@@ -96,6 +98,32 @@ def remove_row(prefix: str, row: int) -> None:
         _forget_row(prefix, row)
 
 
+# --- Tap-to-pick buttons ---------------------------------------------------------
+
+
+def _keep_choice(key: str, fallback: object) -> None:
+    """Clicking the selected pill again would clear it; put the last choice back."""
+    if st.session_state.get(key) is None:
+        st.session_state[key] = st.session_state.get(f"{key}--last", fallback)
+
+
+def pick(where, label: str, options, key: str, fallback, **kwargs):
+    """A row of pills that always has a value (Streamlit's own `required=True`
+    sometimes loses a value set through session state, so we keep it here)."""
+    value = where.segmented_control(
+        label,
+        options=tuple(options),
+        key=key,
+        on_change=_keep_choice,
+        args=(key, fallback),
+        **kwargs,
+    )
+    if value is None:
+        value = st.session_state.get(f"{key}--last", fallback)
+    st.session_state[f"{key}--last"] = value
+    return value
+
+
 # --- Plan details --------------------------------------------------------------
 
 
@@ -129,25 +157,27 @@ def plan_details(
             "Goal", max_chars=100, placeholder=goal_hint, key=f"{prefix}-goal"
         )
         frequency_col, level_col = st.columns(2)
-        frequency = frequency_col.segmented_control(
+        frequency = pick(
+            frequency_col,
             "Sessions per week",
-            options=range(1, 8),
+            range(1, 8),
+            f"{prefix}-frequency",
+            initial.get("frequency_per_week", 3),
             format_func=lambda n: f"{n}×",
-            required=True,
-            key=f"{prefix}-frequency",
         )
-        experience = level_col.segmented_control(
+        experience = pick(
+            level_col,
             "Experience level",
-            options=levels,
+            levels,
+            f"{prefix}-experience",
+            level,
             format_func=str.capitalize,
-            required=True,
-            key=f"{prefix}-experience",
         )
     return {
         "title": title,
         "goal": goal,
-        "frequency_per_week": frequency or 0,
-        "experience_level": experience or "",
+        "frequency_per_week": frequency,
+        "experience_level": experience,
     }
 
 
@@ -216,15 +246,21 @@ def _exercise_row(
             )
             reps = ", ".join([str(int(same))] * int(sets))
         rest_key = f"{prefix}-rest-{row}"
-        choices = sorted({*REST_CHOICES, int(st.session_state.get(rest_key, 60))})
+        # Never crash on an empty pick: use the last choice, else the default.
+        if st.session_state.get(rest_key) is None:
+            st.session_state[rest_key] = st.session_state.get(
+                f"{rest_key}--last", DEFAULT_REST
+            )
+        choices = sorted({*REST_CHOICES, int(st.session_state[rest_key])})
         # Tap-to-pick instead of a slider: Streamlit's slider draws its handle
         # mirrored in right-to-left browser languages (e.g. Hebrew).
-        rest = rest_col.segmented_control(
+        rest = pick(
+            rest_col,
             "Rest between sets",
-            options=choices,
+            choices,
+            rest_key,
+            DEFAULT_REST,
             format_func=_rest_label,
-            required=True,
-            key=rest_key,
         )
         st.toggle(
             "Different reps per set",

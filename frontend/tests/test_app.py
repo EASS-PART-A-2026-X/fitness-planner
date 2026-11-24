@@ -480,6 +480,16 @@ def test_create_plan_sends_structured_exercises_and_the_chosen_icon(backend):
     assert any("Created Legs" in item.value for item in at.success)
 
 
+def test_empty_rest_pick_falls_back_to_the_default(backend):
+    at = open_create(backend)
+
+    at.session_state["create-0-rest-0"] = None
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["create-0-rest-0"] == 60
+
+
 def test_different_reps_per_set_uses_the_comma_list(backend):
     at = open_create(backend)
     at.number_input(key="create-0-sets-0").set_value(3)

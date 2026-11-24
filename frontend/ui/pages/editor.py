@@ -29,6 +29,7 @@ from ui.dialogs import ask_delete
 from ui.forms import (
     exercise_editor,
     load_exercises,
+    pick,
     plan_details,
     reset_editor,
     show_errors,
@@ -44,6 +45,7 @@ def clear_form(prefix: str) -> None:
     reset_editor(prefix)
     for field in (*DETAIL_FIELDS, "coach-notes", "plan-source"):
         st.session_state.pop(f"{prefix}-{field}", None)
+        st.session_state.pop(f"{prefix}-{field}--last", None)
 
 
 def guess_type(name: str) -> str:
@@ -123,13 +125,14 @@ def ai_fill(token: str, prefix: str, details: dict) -> None:
             "Uses your name, goal, sessions and level from above. You can still "
             "edit, remove or add exercises afterwards."
         )
-        minutes = st.segmented_control(
+        minutes = pick(
+            st,
             "Minutes per workout",
-            options=MINUTE_CHOICES,
+            MINUTE_CHOICES,
+            f"{prefix}-minutes",
+            DEFAULT_MINUTES,
             default=DEFAULT_MINUTES,
             format_func=lambda n: f"{n} min",
-            required=True,
-            key=f"{prefix}-minutes",
         )
         equipment_col, notes_col = st.columns(2)
         equipment = equipment_col.multiselect(

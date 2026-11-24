@@ -55,6 +55,19 @@ def api(base: str, path: str, *, method="GET", token=None, payload=None):
         return json.load(response) if response.status != 204 else None
 
 
+def fill_and_settle(page: Page, field, value: str) -> None:
+    """Type into a field, commit it, and wait for Streamlit's rerun to finish.
+
+    Typing into the next field while the page is still re-rendering can lose
+    the earlier value, which made this test flaky.
+    """
+    field.fill(value)
+    field.press("Tab")
+    page.wait_for_timeout(300)
+    expect(page.locator('[data-testid="stStatusWidget"]')).to_have_count(0)
+    expect(field).to_have_value(value)
+
+
 def uv_server(project: Path, port: int, env: dict) -> subprocess.Popen:
     return subprocess.Popen(
         ["uv", "run", "--project", str(project), "fastapi", "run"]
@@ -153,11 +166,11 @@ def test_create_train_and_delete_a_plan(stack, signed_in):
     page.get_by_role("button", name="Create your first plan").click()
     page.get_by_role("button", name="Choose Lower body").click()
     expect(page.get_by_text("step 2 of 2")).to_be_visible()
-    page.get_by_label("Workout name").fill(title)
-    page.get_by_label("Goal").fill("Build strength")
-    page.get_by_label("Exercise name").fill("Squats")
-    page.get_by_label("Sets", exact=True).fill("2")
-    page.get_by_label("Reps", exact=True).fill("12")
+    fill_and_settle(page, page.get_by_label("Workout name"), title)
+    fill_and_settle(page, page.get_by_label("Goal"), "Build strength")
+    fill_and_settle(page, page.get_by_label("Exercise name"), "Squats")
+    fill_and_settle(page, page.get_by_label("Sets", exact=True), "2")
+    fill_and_settle(page, page.get_by_label("Reps", exact=True), "12")
     page.get_by_role("button", name="Create plan").last.click()
     expect(page.get_by_text(f"Created {title}")).to_be_visible()
 
