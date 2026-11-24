@@ -1,0 +1,28 @@
+[server]
+address = "localhost"
+port = 8501
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#10B981"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+borderColor = "#E2E8F0"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
+headingFontWeights = [700, 650, 600]
+baseRadius = "0.75rem"
+buttonRadius = "full"
+showWidgetBorder = true
+greenColor = "#10B981"
+blueColor = "#3B82F6"
+orangeColor = "#F97362"
+redColor = "#E11D48"

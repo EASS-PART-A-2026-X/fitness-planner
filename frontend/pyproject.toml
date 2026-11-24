@@ -1,0 +1,27 @@
+[project]
+name = "fitness-planner-frontend"
+version = "0.1.0"
+description = "Streamlit frontend for the Fitness Planner API"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "streamlit>=1.66.0",
+    "streamlit-cookies-controller>=0.0.4",
+]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.56.0",
+    "pytest>=9.1.1",
+    "respx>=0.23.1",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not e2e'"
+pythonpath = ["."]
+markers = ["e2e: launches the backend and frontend in a real browser"]
+
+[tool.ruff.lint]
+extend-select = ["I"]

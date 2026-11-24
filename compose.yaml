@@ -1,0 +1,63 @@
+name: fitness-planner
+
+services:
+  ai-service:
+    build: ./ai-service
+    # No ports: only the backend may call the AI service.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      AI_MODEL: ${AI_MODEL:-test}
+      AI_FALLBACK: ${AI_FALLBACK:-baseline}
+      PYDANTIC_AI_NO_BANNER: "1"
+    healthcheck:
+      test: >-
+        python -c "import urllib.request;
+        urllib.request.urlopen('http://localhost:8001/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: sqlite:////app/data/database.db
+      AI_SERVICE_URL: http://ai-service:8001
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: >-
+        python -c "import urllib.request;
+        urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8501}:8501"
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: >-
+        python -c "import urllib.request;
+        urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  backend-data:
